@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { toonify } from './look';
 
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 
@@ -133,5 +134,6 @@ export class Wok {
     handle.rotation.x = -0.22;
 
     this.group.add(inner, outer, rim, handle);
+    toonify(this.group, 0.003);
   }
 }

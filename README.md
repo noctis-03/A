@@ -29,7 +29,8 @@ npm run build    # dist/ 로 빌드 (상대 경로라 Electron / Capacitor 에 �
 | `src/main.ts` | 게임 루프, 주문/채점/하루 진행, HUD |
 | `src/wok.ts` | 웍 모델과 입력을 따라가는 키네마틱 움직임(위치·기울임) |
 | `src/physics.ts` | 재료 입자 물리(웍 곡면 충돌·마찰, 입자 간 충돌, 가열/탐), 인스턴스 렌더링 |
-| `src/scene.ts` | 트럭 내부, 거리 풍경, 불꽃, 김 |
+| `src/scene.ts` | 트럭 내부, 밤 거리 풍경(네온·가로등·전구 줄), 화구 불꽃, 김 |
+| `src/look.ts` | 카툰 셰이딩·외곽선 변환, 블룸 후처리, 웍질 불길·불티 효과 |
 | `src/customers.ts` | 손님 모델과 행동 |
 | `src/ingredients.ts` | 재료 · 레시피 데이터 |
 | `src/audio.ts` | Howler.js 효과음 (에셋 없이 코드로 합성) |

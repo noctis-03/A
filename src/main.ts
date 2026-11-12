@@ -5,6 +5,7 @@ import { INGREDIENTS, ING_INDEX, RECIPES, type IngId, type Recipe } from './ingr
 import { ParticleRenderer, Particles, type DishStats } from './physics';
 import { buildWorld, Steam } from './scene';
 import { Wok } from './wok';
+import { FireFx, Post, toonify } from './look';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
@@ -63,6 +64,11 @@ class Game {
   readonly particles = new Particles();
   readonly particleView = new ParticleRenderer(this.particles);
   readonly steam = new Steam(this.world.scene);
+  readonly fire = new FireFx(this.world.scene);
+  readonly post: Post;
+  private camBase = new THREE.Vector3();
+  private shake = 0;
+  private flareCd = 0;
   readonly sfx = new Sfx();
   private canvas = $<HTMLCanvasElement>('game');
   private ingButtons = new Map<IngId, HTMLButtonElement>();
@@ -71,6 +77,7 @@ class Game {
   constructor() {
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.post = new Post(this.renderer, this.world.scene, this.camera);
     this.world.scene.add(this.wok.group, this.particleView.group);
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -159,6 +166,8 @@ class Game {
     this.camera.fov = portrait ? 74 : 58;
     this.camera.position.set(0, portrait ? 1.86 : 1.74, portrait ? 0.92 : 0.78);
     this.camera.lookAt(0, 1.08, -0.6);
+    this.camBase.copy(this.camera.position);
+    this.post.setSize(w, h, this.renderer.getPixelRatio());
     this.camera.updateProjectionMatrix();
   }
 
@@ -190,6 +199,7 @@ class Game {
     const recipe = pool[Math.floor(Math.random() * pool.length)];
     const patience = Math.max(50, 95 - this.day * 5) + recipe.ings.length * 3;
     this.customer = new Customer(this.world.scene, recipe, patience);
+    toonify(this.customer.group);
     this.sfx.play('bell', 0.5);
   }
 
@@ -281,7 +291,7 @@ class Game {
     this.plateT = 0;
     this.plateOwner = c;
     w.plate.visible = true;
-    const col = (w.plateFood.material as THREE.MeshStandardMaterial).color;
+    const col = (w.plateFood.material as THREE.MeshToonMaterial).color;
     col.set(0xf6f1e4).lerp(new THREE.Color(0xe2b566), clamp(this.stats.avgCook, 0, 1));
     if (this.stats.avgCook > 1) col.lerp(new THREE.Color(0x6b4420), clamp((this.stats.avgCook - 1) / 0.9, 0, 1));
     col.lerp(new THREE.Color(0x15110e), clamp(this.stats.burntFrac * 1.5, 0, 1));
@@ -418,6 +428,13 @@ class Game {
       if (peak >= 0.08) {
         const cm = Math.round(peak * 100);
         this.popToss(cm >= 20 ? `🔥🔥 ${cm}cm!!` : cm >= 14 ? `🔥 ${cm}cm!` : `${cm}cm`, cm);
+        if (cm >= 20) {
+          this.shake = Math.max(this.shake, Math.min(0.012, 0.004 + (cm - 20) * 0.0004));
+          const fl = $('flash');
+          fl.classList.remove('on');
+          void fl.offsetWidth;
+          fl.classList.add('on');
+        }
         this.tossPopupCd = 0.9;
       }
       this.particles.tossPeak = 0;
@@ -440,8 +457,27 @@ class Game {
       const n = 0.75 + 0.35 * Math.sin(this.time * 23 + i * 1.7) + 0.2 * Math.sin(this.time * 37 + i * 3.1);
       f.scale.set(1 + flare * 0.5, n * (1 + flare * 1.2), 1 + flare * 0.5);
     });
-    this.world.fireLight.intensity = 0.8 + flare * 1.6 + 0.15 * Math.sin(this.time * 30);
+    // 웍질 불길: 재료가 높이 뜰수록 림에서 불길이 솟고 불티가 튄다
     const wc = this.tmp.copy(this.wok.base).add(this.wok.off);
+    const lift = this.particles.airLift;
+    // 재료 몇 조각이 5cm 넘게 떠야 불길이 붙는다 (쏟아 넣을 때 튀는 정도는 무시)
+    const hot = s.live > 0 && this.particles.airborne >= 3 ? clamp((lift - 0.05) / 0.15, 0, 1.5) : 0;
+    this.flareCd -= dt;
+    if (hot > 0 && this.flareCd <= 0) {
+      this.fire.flare(wc, this.wok.rimR, hot);
+      this.fire.sparks(wc, Math.round(hot * 6 + Math.min(10, this.particles.airborne * 0.15)));
+      this.flareCd = 0.07;
+    }
+    this.fire.update(dt);
+    this.world.fireLight.intensity = 0.4 + flare * 0.5 + hot * 1.2 + 0.08 * Math.sin(this.time * 30);
+
+    // 카메라 흔들림
+    this.shake = Math.max(0, this.shake - dt * 0.03);
+    this.camera.position.set(
+      this.camBase.x + (Math.random() - 0.5) * this.shake * 2,
+      this.camBase.y + (Math.random() - 0.5) * this.shake * 2,
+      this.camBase.z,
+    );
     const heatLevel = clamp(s.avgCook, 0, 1);
     this.steam.update(dt, s.live ? 2 + heatLevel * 7 + s.burntFrac * 14 : 0, wc, clamp(s.burntFrac * 2.5, 0, 1));
 
@@ -539,7 +575,7 @@ class Game {
     }
     if (n === 16) this.acc = 0;
     this.update(dt);
-    this.renderer.render(this.world.scene, this.camera);
+    this.post.render();
   }
 }
 

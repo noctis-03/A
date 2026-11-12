@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { INGREDIENTS, type Shape } from './ingredients';
 import type { Wok } from './wok';
+import { outlineMat, toonMat } from './look';
 
 export const FREE = 0;
 export const LIVE = 1; // 웍 안 / 공중에 있는, 아직 요리에 포함되는 조각
@@ -61,6 +62,10 @@ export class Particles {
   tossSum = 0;
   /** 최근 착지한 조각 중 가장 높이 떠오른 높이(m) (게임 쪽에서 읽고 0으로 리셋) */
   tossPeak = 0;
+  /** 지금 공중에 떠 있는 조각 중 가장 높이 오른 높이(m), 매 스텝 갱신 (불길 연출용) */
+  airLift = 0;
+  /** 지금 공중에 높이(5cm 이상) 떠 있는 조각 수 */
+  airborne = 0;
 
   spawn(type: number, x: number, y: number, z: number, vy0 = 0): number {
     let i = -1;
@@ -197,6 +202,8 @@ export class Particles {
     const R = wok.R;
     const H = wok.H;
     const rim = wok.rimR;
+    this.airLift = 0;
+    this.airborne = 0;
 
     for (let i = 0; i < n; i++) {
       const st = state[i];
@@ -296,6 +303,11 @@ export class Particles {
       if (!touched) {
         this.air[i] += h;
         if (py[i] > this.peakY[i]) this.peakY[i] = py[i];
+        if (st === LIVE && this.air[i] > 0.03) {
+          const lift = py[i] - this.launchY[i];
+          if (lift > this.airLift) this.airLift = lift;
+          if (lift > TOSS_MIN) this.airborne++;
+        }
         const gy = groundHeight(px[i], pz[i]);
         if (py[i] - ri < gy) {
           // 웍 바로 아래로 파고든 경우는 무시할 수 없으므로 그대로 바닥 처리
@@ -350,6 +362,7 @@ const DARK = new THREE.Color(0x6b4420);
 export class ParticleRenderer {
   readonly group = new THREE.Group();
   private meshes: THREE.InstancedMesh[] = [];
+  private outlines: THREE.InstancedMesh[] = [];
   private raw: THREE.Color[] = [];
   private cooked: THREE.Color[] = [];
   private used: number[] = [];
@@ -363,7 +376,7 @@ export class ParticleRenderer {
     for (const def of INGREDIENTS) {
       const mesh = new THREE.InstancedMesh(
         shapeGeometry(def.shape),
-        new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0 }),
+        toonMat(0xffffff),
         def.count * 3,
       );
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -374,7 +387,13 @@ export class ParticleRenderer {
       this.raw.push(new THREE.Color(def.raw));
       this.cooked.push(new THREE.Color(def.cooked));
       this.used.push(0);
-      this.group.add(mesh);
+      // 외곽선: 같은 인스턴스 행렬을 공유하는 뒷면 메시
+      const line = new THREE.InstancedMesh(mesh.geometry, outlineMat(0.16, 0x2a160c), def.count * 3);
+      line.instanceMatrix = mesh.instanceMatrix;
+      line.count = 0;
+      line.frustumCulled = false;
+      this.outlines.push(line);
+      this.group.add(mesh, line);
     }
   }
 
@@ -431,6 +450,7 @@ export class ParticleRenderer {
     for (let t = 0; t < this.meshes.length; t++) {
       const mesh = this.meshes[t];
       mesh.count = this.used[t];
+      this.outlines[t].count = this.used[t];
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     }
