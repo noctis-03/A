@@ -21,6 +21,7 @@ import { FireFx, Post, toonify } from './look';
 import { T, loadTuning } from './tuning';
 import { DebugPanel, isTyping } from './debug';
 import { OilBottle } from './oil';
+import { Wipe, type WipeInfo } from './transition';
 
 // 디버그 패널에서 바꿔 둔 수치를 먼저 불러온다
 loadTuning();
@@ -124,6 +125,7 @@ class Game {
   readonly steam = new Steam(this.world.scene);
   readonly fire = new FireFx(this.world.scene);
   readonly oil = new OilBottle(this.world.scene);
+  readonly wipe = new Wipe();
   /** 지금 웍에 든 기름 (ml) */
   private oilMl = 0;
   readonly debug = new DebugPanel();
@@ -148,6 +150,8 @@ class Game {
     this.debug.setInfo(() => this.debugInfo());
     this.showLobby();
     this.renderer.setAnimationLoop(() => this.frame());
+    // 첫 로딩: 덮인 상태에서 시작해 로비가 드러난다
+    this.wipe.run({ kind: 'lobby', icon: '🔥', kicker: 'WOK TRUCK', title: '웍 트럭', sub: '불맛 볶음밥 푸드트럭' }, () => {}, { covered: true, hold: 1100 });
   }
 
   private get active() {
@@ -253,7 +257,10 @@ class Game {
     }
     $('serve').addEventListener('click', () => this.serve());
     $('taste-btn').addEventListener('click', () => this.taste());
-    $('go-sell').addEventListener('click', () => this.startSelling());
+    $('go-sell').addEventListener('click', () => {
+      if (this.tutorial) this.startSelling();
+      else this.go(this.sellInfo(), () => this.startSelling());
+    });
     $('trash').addEventListener('click', () => this.trash());
     $('book-btn').addEventListener('click', () => this.openBook());
     $('lobby-book').addEventListener('click', () => this.openBook());
@@ -261,23 +268,29 @@ class Game {
     $('taste-close').addEventListener('click', () => this.closeTaste());
     $('continue').addEventListener('click', () => {
       this.sfx.init();
-      this.continueGame();
+      const s = readSave();
+      if (!s) return;
+      this.go(s.phase === 'selling' ? this.sellInfo(s.round) : this.researchInfo(s.round), () => this.continueGame());
     });
     $('newgame').addEventListener('click', () => {
       this.sfx.init();
       if (readSave()) $('confirm').classList.remove('hidden');
-      else this.newGame();
+      else this.go(this.researchInfo(1), () => this.newGame());
     });
     $('confirm-no').addEventListener('click', () => $('confirm').classList.add('hidden'));
     $('confirm-yes').addEventListener('click', () => {
       $('confirm').classList.add('hidden');
-      this.newGame();
+      this.go(this.researchInfo(1), () => this.newGame());
     });
     $('next').addEventListener('click', () => {
-      $('dayend').classList.add('hidden');
-      this.startResearch();
+      this.go(this.researchInfo(this.round), () => {
+        $('dayend').classList.add('hidden');
+        this.startResearch();
+      });
     });
-    $('home-btn').addEventListener('click', () => this.showLobby());
+    $('home-btn').addEventListener('click', () =>
+      this.go({ kind: 'lobby', icon: '🏠', kicker: 'LOBBY', title: '로비', sub: '진행 상황은 저장돼요' }, () => this.showLobby()),
+    );
     $('mute').addEventListener('click', () => {
       $('mute').textContent = this.sfx.toggleMute() ? '🔇' : '🔊';
     });
@@ -310,6 +323,30 @@ class Game {
       found: [...this.found],
       best: this.best,
     });
+  }
+
+  // ───────────── 화면 전환 ─────────────
+
+  /** 전환 로딩창을 띄우고, 화면이 덮였을 때 mid 를 실행한다 */
+  private go(info: WipeInfo, mid: () => void) {
+    if (this.wipe.busy) return;
+    this.wok.release();
+    this.oil.release();
+    void this.wipe.run(info, mid, { onSweep: () => this.sfx.play('whoosh', 0.45) });
+  }
+
+  private researchInfo(round: number): WipeInfo {
+    return {
+      kind: 'research',
+      icon: '🧪',
+      kicker: `ROUND ${round}`,
+      title: '레시피 연구',
+      sub: round === 1 ? '집 주방 · 첫 레시피를 찾아요' : `집 주방 · ${round}회차`,
+    };
+  }
+
+  private sellInfo(round = this.round): WipeInfo {
+    return { kind: 'selling', icon: '🚚', kicker: `DAY ${round}`, title: '장사 시작', sub: '푸드트럭 오픈!' };
   }
 
   private showLobby() {
@@ -863,7 +900,11 @@ class Game {
         this.nextCustomerIn -= dt;
         if (this.nextCustomerIn <= 0) this.spawnCustomer();
       } else if (this.leaving.length === 0) {
-        this.endDay();
+        // 마감: 전환 로딩창 뒤에서 결과 화면을 띄운다
+        this.state = 'result';
+        this.go({ kind: 'result', icon: '🌙', kicker: `DAY ${this.round}`, title: '장사 마감', sub: '오늘의 결과를 확인해요' }, () =>
+          this.endDay(),
+        );
       }
     }
     for (const c of this.leaving) c.update(dt, scene);

@@ -221,3 +221,71 @@ body.dbg-open #dbg-toggle { display: none; }
   #lab { padding: 8px 10px; }
   #actions button { padding: 10px 12px; font-size: 13px; }
 }
+
+/* ───────── 화면 전환 (모션 그래픽 로딩) ───────── */
+#wipe { position: fixed; inset: 0; z-index: 60; overflow: hidden; pointer-events: auto; --w1: #ffd76b; --w2: #d9482f; --w3: #18120e; --ink: #fff8e7; }
+#wipe.hidden { display: none; }
+#wipe.wipe-research { --w1: #ffd76b; --w2: #ff8a3a; --w3: #17463d; }
+#wipe.wipe-selling { --w1: #ffd76b; --w2: #4fb3ff; --w3: #a92e1c; }
+#wipe.wipe-result { --w1: #ff9a5a; --w2: #8a6cff; --w3: #1b1638; }
+#wipe.wipe-lobby { --w1: #ffd76b; --w2: #d9482f; --w3: #18120e; }
+#wipe .wp { position: absolute; top: -25%; bottom: -25%; left: -35%; width: 170%; transform: translateX(-125%) skewX(-16deg); will-change: transform; }
+#wipe .p1 { background: var(--w1); }
+#wipe .p2 { background: var(--w2); }
+#wipe .p3 { background: var(--w3); background-image: repeating-linear-gradient(-16deg, rgba(255,255,255,.035) 0 14px, transparent 14px 34px); }
+#wipe.in .p1 { animation: wpIn .44s cubic-bezier(.75,0,.2,1) forwards; }
+#wipe.in .p2 { animation: wpIn .44s cubic-bezier(.75,0,.2,1) .05s forwards; }
+#wipe.in .p3 { animation: wpIn .44s cubic-bezier(.75,0,.2,1) .09s forwards; }
+#wipe.instant .wp { animation: none !important; transform: translateX(0) skewX(-16deg); }
+#wipe.out .wp { transform: translateX(0) skewX(-16deg); }
+#wipe.out .p3 { animation: wpOut .5s cubic-bezier(.7,0,.25,1) forwards; }
+#wipe.out .p2 { animation: wpOut .5s cubic-bezier(.7,0,.25,1) .06s forwards; }
+#wipe.out .p1 { animation: wpOut .5s cubic-bezier(.7,0,.25,1) .11s forwards; }
+@keyframes wpIn { from { transform: translateX(-125%) skewX(-16deg); } to { transform: translateX(0) skewX(-16deg); } }
+@keyframes wpOut { from { transform: translateX(0) skewX(-16deg); } to { transform: translateX(125%) skewX(-16deg); } }
+
+/* 재료 띠: 위아래로 반대 방향으로 흐른다 */
+#wipe .wipe-ticker { position: absolute; left: -5%; right: -5%; overflow: hidden; white-space: nowrap; font-size: 30px; line-height: 1.3; opacity: 0; display: flex; }
+#wipe .wipe-ticker span { flex: none; }
+#wipe .wipe-ticker span { padding-right: 0; }
+#wipe .t1 { top: 7%; transform: rotate(-3deg); }
+#wipe .t2 { bottom: 7%; transform: rotate(-3deg); }
+#wipe.hold .wipe-ticker { opacity: .5; transition: opacity .3s; }
+#wipe.hold .t1 span { animation: tick 6s linear infinite; }
+#wipe.hold .t2 span { animation: tick 6s linear infinite reverse; }
+#wipe.out .wipe-ticker { opacity: 0; transition: opacity .2s; }
+@keyframes tick { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+
+#wipe .wipe-card { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: var(--ink); padding: 0 max(16px, env(safe-area-inset-left, 0px)); pointer-events: none; }
+#wipe .wipe-card > * { opacity: 0; }
+#wipe .wipe-icon { font-size: 64px; line-height: 1; margin-bottom: 10px; }
+#wipe .wipe-kicker { font-size: 15px; font-weight: 900; letter-spacing: .32em; color: var(--w1); text-transform: uppercase; }
+#wipe .wipe-title { font-size: clamp(34px, 8vw, 64px); font-weight: 900; letter-spacing: -.02em; line-height: 1.1; margin: 4px 0 6px; text-shadow: 0 4px 0 rgba(0,0,0,.25); }
+#wipe .wipe-sub { font-size: 16px; opacity: .8; margin-bottom: 22px; }
+#wipe .wipe-bar { width: min(260px, 60vw); height: 6px; border-radius: 99px; background: rgba(255,255,255,.15); overflow: hidden; }
+#wipe .wipe-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--w1), var(--w2)); border-radius: 99px; }
+#wipe .wipe-tip { font-size: 13px; margin-top: 12px; opacity: .7; }
+#wipe.hold .wipe-icon { animation: popIcon .55s cubic-bezier(.2,1.6,.4,1) forwards; }
+#wipe.hold .wipe-kicker { animation: rise .4s cubic-bezier(.2,.9,.3,1) .06s forwards; }
+#wipe.hold .wipe-title { animation: rise .45s cubic-bezier(.2,.9,.3,1) .12s forwards; }
+#wipe.hold .wipe-sub { animation: rise .4s cubic-bezier(.2,.9,.3,1) .18s forwards; }
+#wipe.hold .wipe-bar { animation: rise .3s ease-out .22s forwards; }
+#wipe.hold .wipe-bar i { animation: fillBar var(--hold, 900ms) cubic-bezier(.4,0,.2,1) forwards; }
+#wipe.hold .wipe-tip { animation: rise .4s ease-out .3s forwards; }
+#wipe.out .wipe-card { animation: cardOut .28s ease-in forwards; }
+#wipe.out .wipe-card > * { opacity: 1; }
+#wipe.out .wipe-bar i { width: 100%; }
+@keyframes popIcon { 0% { opacity: 0; transform: scale(.2) rotate(-40deg); } 100% { opacity: 1; transform: none; } }
+@keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+@keyframes fillBar { from { width: 0; } to { width: 100%; } }
+@keyframes cardOut { to { opacity: 0; transform: translateX(60px) skewX(-8deg); } }
+
+/* 움직임 줄이기 설정: 쓸기 대신 페이드 */
+#wipe.reduced .wp { transform: none !important; left: 0; width: 100%; top: 0; bottom: 0; animation: none !important; }
+#wipe.reduced .p1, #wipe.reduced .p2 { display: none; }
+#wipe.reduced.in, #wipe.reduced.hold { animation: fadeIn .16s forwards; }
+#wipe.reduced.out { animation: fadeOut .2s forwards; }
+#wipe.reduced .wipe-card > * { animation: none !important; opacity: 1; }
+#wipe.reduced .wipe-ticker { display: none; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
