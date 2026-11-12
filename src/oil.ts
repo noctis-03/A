@@ -46,7 +46,7 @@ export class OilBottle {
 
   constructor(scene: THREE.Scene) {
     // 몸통: 노란 기름이 비치는 병 + 라벨 + 빨간 뚜껑
-    const glass = toonMat(0xe8b23a);
+    const glass = toonMat(0xf5d570, { transparent: true, opacity: 0.55, depthWrite: false });
     const bodyMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.19, 18), glass);
     bodyMesh.position.y = 0.095;
     const shoulder = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.045, 0.05, 18), glass);
@@ -57,7 +57,8 @@ export class OilBottle {
     cap.position.y = 0.255;
     const nozzle = new THREE.Mesh(new THREE.ConeGeometry(0.008, 0.03, 8), toonMat(0xd2402e));
     nozzle.position.y = 0.285;
-    for (const mesh of [bodyMesh, shoulder, label, cap]) {
+    // 투명한 병 몸통에는 외곽선을 달지 않는다 (안쪽 선이 비쳐 보여서)
+    for (const mesh of [label, cap]) {
       const o = new THREE.Mesh(mesh.geometry, outlineMat(0.004));
       mesh.add(o);
     }
@@ -73,7 +74,7 @@ export class OilBottle {
 
     this.drops = new THREE.InstancedMesh(
       new THREE.SphereGeometry(0.0055, 6, 4),
-      new THREE.MeshBasicMaterial({ color: new THREE.Color(1.25, 0.95, 0.35) }),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(1.2, 1.0, 0.5), transparent: true, opacity: 0.6, depthWrite: false }),
       MAX_DROPS,
     );
     this.drops.count = 0;

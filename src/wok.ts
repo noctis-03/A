@@ -28,7 +28,7 @@ export class Wok {
   readonly group = new THREE.Group();
   private oilSheen = new THREE.Mesh(
     new THREE.CircleGeometry(1, 32),
-    new THREE.MeshBasicMaterial({ color: 0xe8a92a, transparent: true, opacity: 0.88, depthWrite: false }),
+    new THREE.MeshBasicMaterial({ color: 0xf7d97a, transparent: true, opacity: 0.28, depthWrite: false }),
   );
 
   /** 기름 양(ml)에 맞춰 바닥 기름 막 크기를 바꾼다 */
