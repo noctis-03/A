@@ -30,8 +30,7 @@ function canvasTexture(w: number, h: number, draw: (c: CanvasRenderingContext2D)
   return tex;
 }
 
-/** truck: 장사(트럭 안) · home: 연구(집 주방) · lobby: 로비(밤거리에서 본 트럭 외관) */
-export type Place = 'truck' | 'home' | 'lobby';
+export type Place = 'truck' | 'home';
 
 export interface World {
   scene: THREE.Scene;
@@ -272,138 +271,13 @@ export function buildWorld(): World {
 
   const trunkM = std(0x3a2a20, 1);
   const leafM = std(0x24453a, 1);
-  // 가로수 (로비 카메라 바로 앞을 가리므로 로비에서는 숨긴다)
-  const trees = new THREE.Group();
-  truck.add(trees);
   for (const tx of [-5.5, -2.6, 2.9, 6.2]) {
     const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 1.6, 8), trunkM);
     trunk.position.set(tx, 0.55, -4.0);
     const leaf = new THREE.Mesh(new THREE.IcosahedronGeometry(0.85, 1), leafM);
     leaf.position.set(tx, 1.9, -4.0);
     leaf.scale.y = 1.15;
-    trees.add(trunk, leaf);
-  }
-
-  // ── 로비 전용: 밤거리에서 바라본 웍웍! 푸드트럭 외관 ──
-  const exterior = new THREE.Group();
-  scene.add(exterior);
-  {
-    const red = std(0xd9442c, 0.55);
-    const redDark = std(0xa8321f, 0.6);
-    const cream = std(0xfff1d6, 0.8);
-    const tire = std(0x1c1d22, 0.9);
-    const hub = std(0xb9bec6, 0.4, 0.6);
-    // 차체: 양옆 · 지붕 · 아래 치마
-    for (const sx of [-1, 1]) {
-      box(exterior, 0.05, 2.5, 2.8, red, sx * 1.575, 1.12, 0.3);
-      box(exterior, 0.06, 0.16, 2.8, cream, sx * 1.59, 0.62, 0.3); // 크림 띠
-      box(exterior, 0.06, 0.06, 2.8, redDark, sx * 1.59, 0.5, 0.3);
-    }
-    box(exterior, 3.24, 0.1, 2.9, redDark, 0, 2.42, 0.3); // 지붕
-    box(exterior, 3.0, 0.3, 2.6, std(0x24252b, 0.9), 0, -0.1, 0.35); // 아래
-    box(exterior, 3.1, 0.12, 0.08, cream, 0, -0.05, -1.1); // 앞 범퍼
-    // 바퀴
-    for (const sx of [-1, 1]) {
-      for (const z of [-0.5, 1.2]) {
-        const w = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.24, 22), tire);
-        w.rotation.z = Math.PI / 2;
-        w.position.set(sx * 1.52, 0.07, z);
-        const h = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.26, 16), hub);
-        h.rotation.z = Math.PI / 2;
-        h.position.copy(w.position);
-        exterior.add(w, h);
-      }
-    }
-    // 옆면 로고
-    const drawLogo = (c: CanvasRenderingContext2D) => {
-      c.clearRect(0, 0, 512, 192);
-      c.font = 'bold 128px "Black Han Sans", sans-serif';
-      c.textAlign = 'center';
-      c.textBaseline = 'middle';
-      c.lineWidth = 18;
-      c.strokeStyle = '#2b1a12';
-      c.strokeText('웍웍!', 256, 100);
-      c.fillStyle = '#fff4dc';
-      c.fillText('웍웍!', 256, 100);
-    };
-    const logoTex = canvasTexture(512, 192, drawLogo);
-    // 제목 글꼴이 늦게 로드되면 다시 그린다
-    document.fonts?.ready.then(() => {
-      drawLogo((logoTex.image as HTMLCanvasElement).getContext('2d')!);
-      logoTex.needsUpdate = true;
-    });
-    for (const sx of [-1, 1]) {
-      const logo = new THREE.Mesh(
-        new THREE.PlaneGeometry(1.5, 0.56),
-        new THREE.MeshBasicMaterial({ map: logoTex, transparent: true, color: new THREE.Color(1.15, 1.15, 1.15) }),
-      );
-      logo.position.set(sx * 1.625, 1.32, 0.45);
-      logo.rotation.y = (sx * Math.PI) / 2;
-      exterior.add(logo);
-    }
-    // 지붕 위 네온 간판 (손님 쪽을 본다)
-    const roofSign = neon('웍웍!', '#ffb547', 1.9, 0.72);
-    roofSign.position.set(0, 2.9, -0.95);
-    roofSign.rotation.y = Math.PI;
-    (roofSign.material as THREE.MeshBasicMaterial).color.setScalar(1.45); // 빛 번짐에 글자가 묻히지 않게
-    box(exterior, 2.0, 0.82, 0.08, std(0x1a1420, 0.8), 0, 2.9, -0.9);
-    box(exterior, 0.06, 0.4, 0.06, std(0x23252c, 0.6, 0.5), -0.7, 2.6, -0.9);
-    box(exterior, 0.06, 0.4, 0.06, std(0x23252c, 0.6, 0.5), 0.7, 2.6, -0.9);
-    exterior.add(roofSign);
-    // 입간판
-    const boardTex = canvasTexture(256, 360, (c) => {
-      c.fillStyle = '#1f2a24';
-      c.fillRect(0, 0, 256, 360);
-      c.strokeStyle = '#c9a66b';
-      c.lineWidth = 12;
-      c.strokeRect(6, 6, 244, 348);
-      c.textAlign = 'center';
-      c.fillStyle = '#ffcf6b';
-      c.font = 'bold 44px sans-serif';
-      c.fillText('오늘의', 128, 80);
-      c.fillText('볶음밥', 128, 132);
-      c.fillStyle = '#fff6dd';
-      c.font = '30px sans-serif';
-      c.fillText('불맛 가득', 128, 200);
-      c.fillText('6,000원~', 128, 250);
-      c.fillStyle = '#ff8a6b';
-      c.fillText('★ ★ ★', 128, 310);
-    });
-    const board = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.88), new THREE.MeshBasicMaterial({ map: boardTex }));
-    board.position.set(2.05, 0.27, -2.35);
-    board.rotation.set(-0.14, Math.PI - 0.45, 0);
-    const boardBack = box(exterior, 0.7, 0.96, 0.04, std(0x6b4a2e, 0.8), 2.07, 0.26, -2.31);
-    boardBack.rotation.set(-0.14, Math.PI - 0.45, 0);
-    exterior.add(board);
-    // 트럭 뒤로 보이는 거리 (바닥 · 건물 · 달)
-    const back = new THREE.Mesh(new THREE.PlaneGeometry(80, 30), std(0x2e3242, 1));
-    back.rotation.x = -Math.PI / 2;
-    back.position.set(0, -0.255, 15);
-    exterior.add(back);
-    let ex = -20;
-    let ek = 3;
-    while (ex < 20) {
-      const w = 3 + Math.random() * 3;
-      const h = 5 + Math.random() * 9;
-      const mat = new THREE.MeshStandardMaterial({
-        color: palette[ek++ % palette.length],
-        map: winTex,
-        emissive: 0xffffff,
-        emissiveMap: winGlow,
-        emissiveIntensity: 0.9,
-        roughness: 0.9,
-      });
-      const b = box(exterior, w, h, 4, mat, ex + w / 2, h / 2 - 0.25, 11 + Math.random() * 2);
-      b.rotation.y = Math.PI;
-      ex += w + 0.3;
-    }
-    const moonBall = new THREE.Mesh(new THREE.SphereGeometry(1.1, 24, 16), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 1.5, 1.15) }));
-    moonBall.position.set(-7, 13, 24);
-    exterior.add(moonBall);
-    // 트럭 옆을 비추는 등불
-    const sideGlow = new THREE.PointLight(0xffb060, 1.4, 4, 1.6);
-    sideGlow.position.set(-2.4, 1.8, -0.6);
-    exterior.add(sideGlow);
+    truck.add(trunk, leaf);
   }
 
   // ── 접시 (서빙 연출) ──
@@ -424,11 +298,9 @@ export function buildWorld(): World {
   toonify(scene);
 
   const setPlace = (p: Place) => {
-    truck.visible = p === 'truck' || p === 'lobby';
-    exterior.visible = p === 'lobby';
-    trees.visible = p !== 'lobby';
+    truck.visible = p === 'truck';
     home.visible = p === 'home';
-    const bg = p === 'home' ? 0x1a1420 : 0x0b1026;
+    const bg = p === 'truck' ? 0x0b1026 : 0x1a1420;
     (scene.background as THREE.Color).setHex(bg);
     scene.fog!.color.setHex(bg);
   };

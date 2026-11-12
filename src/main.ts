@@ -375,7 +375,7 @@ class Game {
     // 장사 중에 나가면 그날은 처음부터 다시 한다 (돈은 그날 시작 시점으로)
     this.clearStage();
     this.state = 'lobby';
-    this.world.setPlace('lobby');
+    this.world.setPlace('truck');
     $('hud').classList.add('hidden');
     $('dayend').classList.add('hidden');
     $('lobby').classList.remove('hidden');
@@ -1079,7 +1079,6 @@ class Game {
       this.camBase.y + (Math.random() - 0.5) * this.shake * 2,
       this.camBase.z,
     );
-    this.updateLobbyCamera();
     const heatLevel = clamp(s.avgCook, 0, 1);
     this.steam.update(dt, s.live ? 2 + heatLevel * 7 + s.burntFrac * 14 : 0, wc, clamp(s.burntFrac * 2.5, 0, 1));
 
@@ -1161,30 +1160,6 @@ class Game {
     if (t === 'trash') return $('trash');
     if (t.startsWith('ing:')) return this.ingButtons.get(t.slice(4) as IngId) ?? null;
     return null;
-  }
-
-  /** 로비: 밤거리에서 트럭을 바라보는 카메라 (천천히 흔들림). 로비를 나가면 원래 카메라로 */
-  private lobbyCam = false;
-  private updateLobbyCamera() {
-    if (this.state !== 'lobby') {
-      if (this.lobbyCam) {
-        this.lobbyCam = false;
-        this.resize();
-      }
-      return;
-    }
-    this.lobbyCam = true;
-    const portrait = window.innerWidth / window.innerHeight < 1;
-    const t = this.time * 0.25;
-    if (portrait) {
-      // 세로 화면: 로비 메뉴가 가운데를 덮으므로 트럭을 제목 뒤쪽(위)에 둔다
-      this.camera.position.set(1.6 + Math.sin(t) * 0.25, 1.1 + Math.sin(t * 1.3) * 0.05, -7.6);
-      this.camera.lookAt(0.6, 0.15, -0.4);
-    } else {
-      // 화면 오른쪽에 트럭이 오도록 (카메라는 +z 방향을 보므로 화면 오른쪽 = 월드 -x)
-      this.camera.position.set(2.6 + Math.sin(t) * 0.3, 1.2 + Math.sin(t * 1.3) * 0.05, -6.4);
-      this.camera.lookAt(2.3, 1.25, -0.4);
-    }
   }
 
   private setHtml(id: string, html: string) {
