@@ -31,13 +31,27 @@ export class Wok {
     new THREE.MeshBasicMaterial({ color: 0xf7d97a, transparent: true, opacity: 0.28, depthWrite: false }),
   );
 
-  /** 기름 양(ml)에 맞춰 바닥 기름 막 크기를 바꾼다 */
+  /**
+   * 기름 양(ml)만큼 웍 안에 기름이 고인다. 넣는 만큼 수면이 계속 올라가며 넓어진다
+   * (림까지 차면 더 넓어지지 않음). 잘 보이도록 실제 부피보다 크게 그린다.
+   */
   setOil(ml: number) {
     this.oilSheen.visible = ml > 0.05;
-    const r = Math.min(0.17, 0.035 + Math.sqrt(ml) * 0.028);
-    this.oilSheen.scale.setScalar(r);
-    // 곡면 바닥에서 반지름 r 일 때의 높이만큼 띄운다
-    this.oilSheen.position.y = this.R - Math.sqrt(this.R * this.R - r * r * 0.6) + 0.004;
+    if (!this.oilSheen.visible) return;
+    const R = this.R;
+    // 구 모양 그릇에 고인 액체 부피: V = π·y²·(3R − y)/3 → 수면 높이 y 를 이분법으로 구한다
+    const V = ml * 1e-6 * 10;
+    let lo = 0;
+    let hi = this.H;
+    for (let i = 0; i < 30; i++) {
+      const y = (lo + hi) / 2;
+      if ((Math.PI * y * y * (3 * R - y)) / 3 < V) lo = y;
+      else hi = y;
+    }
+    const y = Math.max(0.004, lo);
+    const r = Math.sqrt(Math.max(0, R * R - (R - y) * (R - y)));
+    this.oilSheen.scale.setScalar(Math.max(0.03, r));
+    this.oilSheen.position.y = y + 0.002;
   }
 
   private pos = new THREE.Vector3();
