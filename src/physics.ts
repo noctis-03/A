@@ -12,7 +12,7 @@ const FRICTION = 0.38;
 const COOK_RATE = 0.115; // 웍 바닥에 닿아 있을 때 초당 익는 정도
 const SPILL_LIFE = 7;
 /** 이보다 낮게 뜬 건 웍질로 치지 않는다 (m) */
-const TOSS_MIN = 0.04;
+const TOSS_MIN = 0.05;
 
 /** 웍 밖 지형 높이: 조리대 / 트럭 바닥 / 트럭 밖 길 */
 function groundHeight(x: number, z: number) {

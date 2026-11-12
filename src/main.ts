@@ -15,8 +15,8 @@ const DAY_LENGTH = 150;
 const COOK_MIN = 0.85;
 const COOK_MAX = 1.25;
 const GAUGE_MAX = 1.6;
-/** 재료 1조각당 이만큼(m) 높이를 누적하면 웍질 보너스 만점 */
-const TOSS_FULL = 0.25;
+/** 재료 1조각당 이만큼(m) 높이를 누적하면 웍질 보너스 100% (상한 없음, 계속 쌓인다) */
+const TOSS_FULL = 0.4;
 const TOSS_QUALITY = 0.2;
 const TOSS_PAY = 0.3;
 
@@ -245,7 +245,7 @@ class Game {
     ];
     issues.sort((a, b) => a[0] - b[0]);
     let comment: string;
-    if (quality >= 0.9 && toss >= 0.7) comment = '완벽해요! 불맛 최고 🔥';
+    if (quality >= 0.9 && toss >= 1) comment = '완벽해요! 불맛 최고 🔥';
     else if (quality >= 0.9) comment = '완벽해요! 😍';
     else if (quality >= 0.75) comment = '맛있어요! 😋';
     else comment = issues[0][1];
@@ -257,10 +257,10 @@ class Game {
     return { quality, stars, pay, tip, toss, tossPay, comment };
   }
 
-  /** 웍질 보너스 0~1: 조각당 누적 떠오른 높이 기준 */
+  /** 웍질 보너스 (1 = 100%, 상한 없음): 조각당 누적 떠오른 높이 기준 */
   private tossFrac() {
     const n = Math.max(1, this.dishTotal);
-    return clamp(this.particles.tossSum / n / TOSS_FULL, 0, 1);
+    return this.particles.tossSum / n / TOSS_FULL;
   }
 
   serve() {
@@ -503,7 +503,12 @@ class Game {
     $('amount').textContent = has && this.dishTotal ? `${Math.round((s.live / this.dishTotal) * 100)}%` : '-';
     $('burnt').textContent = has ? `${Math.round(s.burntFrac * 100)}%` : '-';
     const toss = has ? this.tossFrac() : 0;
-    $('toss-fill').style.width = `${toss * 100}%`;
+    // 100%마다 한 바퀴씩 다시 채우고 단계별로 색을 바꾼다
+    const lap = Math.floor(toss);
+    const fill = $('toss-fill');
+    fill.style.width = `${(toss - lap) * 100}%`;
+    fill.dataset.lap = String(Math.min(lap, 3));
+    $('toss-bar').dataset.lap = String(Math.min(lap, 3));
     $('toss-text').textContent = has ? `+${Math.round(toss * 100)}%` : '-';
 
     // 말풍선
