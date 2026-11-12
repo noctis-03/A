@@ -3,7 +3,7 @@
  * 사선 패널 3장이 차례로 쓸고 들어와 화면을 덮고 → 그 사이에 장면을 바꾸고 →
  * 제목·로딩 바·재료 띠가 움직이다가 → 패널이 반대쪽으로 빠지며 새 화면이 드러난다.
  */
-import { randomTip } from './tips';
+import { TAG_LABEL, randomTip } from './tips';
 
 export type WipeKind = 'research' | 'selling' | 'result' | 'lobby';
 
@@ -59,15 +59,13 @@ export class Wipe {
     el.querySelector('.wipe-kicker')!.textContent = info.kicker;
     el.querySelector('.wipe-title')!.textContent = info.title;
     el.querySelector('.wipe-sub')!.textContent = info.sub ?? '';
-    // 팁 문구 (명언) 무작위
-    const tip = randomTip();
+    // 팁 문구: 화면 종류에 맞는 것 중 무작위
+    const tip = randomTip(info.kind);
     const tipEl = el.querySelector('.wipe-tip')!;
-    tipEl.textContent = `“${tip.text}”`;
-    if (tip.from) {
-      const src = document.createElement('small');
-      src.textContent = `— ${tip.from}`;
-      tipEl.appendChild(src);
-    }
+    tipEl.textContent = '';
+    const tag = document.createElement('small');
+    tag.textContent = `TIP · ${TAG_LABEL[tip.tag]}`;
+    tipEl.append(tag, tip.text);
     el.style.setProperty('--hold', `${HOLD}ms`);
     el.className = `wipe-${info.kind}${this.reduced ? ' reduced' : ''}`;
     void el.offsetWidth;

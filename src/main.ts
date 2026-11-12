@@ -22,6 +22,7 @@ import { T, loadTuning } from './tuning';
 import { DebugPanel, isTyping } from './debug';
 import { OilBottle } from './oil';
 import { Wipe, type WipeInfo } from './transition';
+import { tutorialView, type TutTarget } from './tutorial';
 
 // 디버그 패널에서 바꿔 둔 수치를 먼저 불러온다
 loadTuning();
@@ -137,6 +138,8 @@ class Game {
   private canvas = $<HTMLCanvasElement>('game');
   private ingButtons = new Map<IngId, HTMLButtonElement>();
   private tmp = new THREE.Vector3();
+  /** 튜토리얼에서 지금 강조 중인 요소들 */
+  private pulsing: HTMLElement[] = [];
 
   constructor() {
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
@@ -516,7 +519,8 @@ class Game {
       this.showTaste(
         '🎉',
         `새 레시피 발견! ${hit.name}`,
-        `<p>레시피 북에 기록했어요. 장사할 때 손님이 주문해요.</p>
+        `${hit.id === TUTORIAL_RECIPE && this.round === 1 ? '<p><b>튜토리얼 완료!</b> 이제 🚚 장사하러 가기를 눌러 첫 장사를 시작해 봐요.</p>' : ''}
+         <p>레시피 북에 기록했어요. 장사할 때 손님이 주문해요.</p>
          <div class="steps">${this.stepsHtml(hit)}</div>
          <p class="small">정석 순서와 양이에요. 순서와 양이 맞을수록 장사 때 별점이 올라가요.</p>`,
         true,
@@ -1006,6 +1010,82 @@ class Game {
     this.updateHud();
   }
 
+  /** 첫 회차 단계별 튜토리얼: 안내 문구, 강조, 화살표 */
+  private updateTutorial() {
+    const on = this.state === 'research' && this.tutorial && !this.modalOpen();
+    const guide = $('guide');
+    const arrow = $('tut-arrow');
+    const pulse: HTMLElement[] = [];
+    let arrowAt: THREE.Vector3 | null = null;
+    let arrowLabel = '';
+    if (on) {
+      guide.classList.remove('hidden');
+      $('hint').classList.add('off');
+      const v = tutorialView({
+        oilMl: this.oilMl,
+        oilIdeal: T.oilIdeal,
+        oilMin: T.oilMin,
+        oilMax: T.oilMax,
+        counts: this.counts,
+        cook: (id) => {
+          const t = this.types[ING_INDEX[id]];
+          return { n: t?.n ?? 0, avg: t?.avgCook ?? 0, burnt: t?.burntFrac ?? 0 };
+        },
+        cookMin: T.cookMin,
+        cookMax: T.cookMax,
+        burntLimit: T.tasteBurntLimit,
+      });
+      $('guide-count').textContent = `${v.index + 1} / ${v.total}`;
+      this.setHtml(
+        'guide-dots',
+        Array.from({ length: v.total }, (_, i) => `<i class="${i < v.index ? 'done' : i === v.index ? 'now' : ''}"></i>`).join(''),
+      );
+      $('guide-icon').textContent = v.icon;
+      $('guide-name').textContent = v.title;
+      $('guide-text').textContent = v.text;
+      const warn = $('guide-warn');
+      warn.classList.toggle('hidden', !v.warn);
+      warn.textContent = v.warn ?? '';
+      const target: TutTarget = v.warnTarget ?? v.target;
+      const el = this.tutElement(target);
+      if (el) pulse.push(el);
+      if (target === 'wok') pulse.push($('gauge'));
+      if (target === 'oil') {
+        arrowAt = this.tmp.copy(this.oil.group.position).add(new THREE.Vector3(0, 0.34, 0));
+        arrowLabel = this.oil.held ? '웍 위에서 흔들기!' : '꾹 누른 채 끌기';
+      } else if (target === 'wok') {
+        arrowAt = this.tmp.copy(this.wok.base).add(this.wok.off).add(new THREE.Vector3(0, 0.2, 0.15));
+        arrowLabel = '꾹 누른 채 흔들기';
+      }
+    } else if (this.state === 'research' && this.round === 1 && this.found.has(TUTORIAL_RECIPE) && !this.modalOpen()) {
+      // 튜토리얼을 마치면 장사하러 가기를 강조
+      pulse.push($('go-sell'));
+    }
+    if (!on && this.tutorial === false) guide.classList.add('hidden');
+
+    // 강조 갱신
+    for (const el of this.pulsing) if (!pulse.includes(el)) el.classList.remove('tut-pulse');
+    for (const el of pulse) el.classList.add('tut-pulse');
+    this.pulsing = pulse;
+
+    if (arrowAt) {
+      const p = arrowAt.project(this.camera);
+      arrow.classList.remove('hidden');
+      arrow.style.left = `${(p.x * 0.5 + 0.5) * window.innerWidth}px`;
+      arrow.style.top = `${(-p.y * 0.5 + 0.5) * window.innerHeight}px`;
+      (arrow.querySelector('b') as HTMLElement).textContent = arrowLabel;
+    } else {
+      arrow.classList.add('hidden');
+    }
+  }
+
+  private tutElement(t: TutTarget): HTMLElement | null {
+    if (t === 'taste') return $('taste-btn');
+    if (t === 'trash') return $('trash');
+    if (t.startsWith('ing:')) return this.ingButtons.get(t.slice(4) as IngId) ?? null;
+    return null;
+  }
+
   private setHtml(id: string, html: string) {
     const el = $(id);
     if (el.dataset.html !== html) {
@@ -1027,6 +1107,8 @@ class Game {
     }
     $('money').textContent = won(this.money);
     $('rating').textContent = this.starsN ? (this.starsSum / this.starsN).toFixed(1) : '-';
+
+    this.updateTutorial();
 
     // 연구 패널
     if (research) {

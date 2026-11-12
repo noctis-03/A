@@ -158,8 +158,32 @@ html, body {
 #taste-dots i.on { background: #ffd76b; }
 #book-btn { font: inherit; font-size: 13px; color: #fff; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2); border-radius: 10px; padding: 6px 10px; cursor: pointer; }
 #book-btn b { color: #ffd76b; }
-#guide { position: absolute; left: 50%; top: 108px; transform: translateX(-50%); max-width: min(560px, calc(100% - 24px)); text-align: center; font-size: 14px; }
-.guide-title { font-weight: 800; color: #ffd76b; }
+#guide { position: absolute; left: 50%; top: 100px; transform: translateX(-50%); width: min(460px, calc(100% - 24px)); font-size: 14px; padding: 12px 14px; }
+.guide-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.guide-title { font-weight: 800; color: #ffd76b; font-size: 13px; }
+#guide-count { font-size: 12px; font-weight: 800; opacity: .7; font-variant-numeric: tabular-nums; }
+.guide-dots { display: flex; gap: 4px; margin: 7px 0 9px; }
+.guide-dots i { flex: 1; height: 4px; border-radius: 99px; background: rgba(255,255,255,.15); }
+.guide-dots i.done { background: #7ddb86; }
+.guide-dots i.now { background: #ffd76b; }
+.guide-step { display: flex; gap: 10px; align-items: flex-start; }
+#guide-icon { font-size: 30px; line-height: 1; }
+.guide-step b { font-size: 17px; }
+.guide-step p { margin: 3px 0 0; line-height: 1.45; opacity: .92; }
+.guide-warn { margin-top: 8px; padding: 6px 9px; border-radius: 9px; background: rgba(226, 85, 61, .25); border: 1px solid rgba(239, 122, 102, .6); color: #ffd2c8; font-weight: 700; font-size: 13px; }
+#guide .steps { margin: 9px 0 0; justify-content: flex-start; }
+#guide .step { font-size: 12px; padding: 3px 7px; }
+
+/* 튜토리얼 강조 */
+.tut-pulse { animation: tutPulse 1.1s ease-in-out infinite; position: relative; z-index: 2; }
+#gauge.tut-pulse { animation-name: tutPulseGauge; }
+@keyframes tutPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 215, 107, .9), 0 0 0 2px #ffd76b; } 50% { box-shadow: 0 0 0 9px rgba(255, 215, 107, 0), 0 0 0 2px #ffd76b; } }
+@keyframes tutPulseGauge { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 215, 107, .6); } 50% { box-shadow: 0 0 0 7px rgba(255, 215, 107, 0); } }
+#tut-arrow { position: absolute; transform: translate(-50%, -100%); display: flex; flex-direction: column; align-items: center; pointer-events: none; animation: tutBob .8s ease-in-out infinite; }
+#tut-arrow span { font-size: 34px; line-height: 1; filter: drop-shadow(0 2px 4px rgba(0,0,0,.5)); }
+#tut-arrow b { background: #ffd76b; color: #33291f; font-size: 13px; padding: 4px 10px; border-radius: 99px; white-space: nowrap; box-shadow: 0 3px 10px rgba(0,0,0,.35); }
+@keyframes tutBob { 0%, 100% { margin-top: 0; } 50% { margin-top: -10px; } }
+@media (prefers-reduced-motion: reduce) { .tut-pulse, #tut-arrow { animation: none; } .tut-pulse { box-shadow: 0 0 0 3px #ffd76b; } }
 
 @media (max-width: 700px) {
   #gauge { top: auto; bottom: 168px; right: 8px; transform: none; width: 150px; padding: 8px 10px; }
@@ -217,6 +241,8 @@ body.dbg-open #dbg-toggle { display: none; }
 }
 @media (max-width: 700px) {
   #guide { top: 118px; font-size: 12px; padding: 8px 10px; }
+  .guide-step b { font-size: 15px; }
+  #guide-icon { font-size: 24px; }
   .step { font-size: 12px; }
   #lab { padding: 8px 10px; }
   #actions button { padding: 10px 12px; font-size: 13px; }
@@ -264,8 +290,8 @@ body.dbg-open #dbg-toggle { display: none; }
 #wipe .wipe-sub { font-size: 16px; opacity: .8; margin-bottom: 22px; }
 #wipe .wipe-bar { width: min(260px, 60vw); height: 6px; border-radius: 99px; background: rgba(255,255,255,.15); overflow: hidden; }
 #wipe .wipe-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--w1), var(--w2)); border-radius: 99px; }
-#wipe .wipe-tip { font-size: 15px; font-weight: 700; margin-top: 16px; opacity: .85; max-width: 90%; text-wrap: balance; }
-#wipe .wipe-tip small { display: block; font-size: 12px; font-weight: 500; opacity: .7; margin-top: 3px; letter-spacing: .05em; }
+#wipe .wipe-tip { font-size: 15px; font-weight: 600; line-height: 1.5; margin-top: 18px; opacity: .92; max-width: min(520px, 90%); text-wrap: balance; }
+#wipe .wipe-tip small { display: block; font-size: 11px; font-weight: 800; color: var(--w1); margin-bottom: 4px; letter-spacing: .12em; }
 #wipe.hold .wipe-icon { animation: popIcon .55s cubic-bezier(.2,1.6,.4,1) forwards; }
 #wipe.hold .wipe-kicker { animation: rise .4s cubic-bezier(.2,.9,.3,1) .06s forwards; }
 #wipe.hold .wipe-title { animation: rise .45s cubic-bezier(.2,.9,.3,1) .12s forwards; }
