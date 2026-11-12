@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { outlineMat, toonMat } from './look';
+import { addOutline, toonMat } from './look';
 import { T } from './tuning';
 import type { Wok } from './wok';
 
@@ -59,8 +59,7 @@ export class OilBottle {
     nozzle.position.y = 0.285;
     // 투명한 병 몸통에는 외곽선을 달지 않는다 (안쪽 선이 비쳐 보여서)
     for (const mesh of [label, cap]) {
-      const o = new THREE.Mesh(mesh.geometry, outlineMat(0.004));
-      mesh.add(o);
+      addOutline(mesh);
     }
     this.body.add(bodyMesh, shoulder, label, cap, nozzle);
     this.group.add(this.body);

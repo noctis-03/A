@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { INGREDIENTS, type Shape } from './ingredients';
 import type { Wok } from './wok';
-import { outlineMat, toonMat } from './look';
+import { ensureOutlineNormals, outlineMat, toonMat } from './look';
 import { T } from './tuning';
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
@@ -454,7 +454,8 @@ export class ParticleRenderer {
       this.cooked.push(new THREE.Color(def.cooked));
       this.used.push(0);
       // 외곽선: 같은 인스턴스 행렬을 공유하는 뒷면 메시
-      const line = new THREE.InstancedMesh(mesh.geometry, outlineMat(0.16, 0x2a160c), def.count * 8);
+      ensureOutlineNormals(mesh.geometry);
+      const line = new THREE.InstancedMesh(mesh.geometry, outlineMat(true, 0x2a160c), def.count * 8);
       line.instanceMatrix = mesh.instanceMatrix;
       line.count = 0;
       line.frustumCulled = false;

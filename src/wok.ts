@@ -157,7 +157,7 @@ export class Wok {
     handle.rotation.x = -0.22;
 
     this.group.add(inner, outer, rim, handle);
-    toonify(this.group, 0.003);
+    toonify(this.group);
 
     // 웍 바닥에 고인 기름 (양에 따라 넓어진다)
     this.oilSheen.rotation.x = -Math.PI / 2;

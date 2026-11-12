@@ -95,6 +95,8 @@ export const DEFAULTS = {
 
   // ── 그래픽 ──
   exposure: 0.95,
+  outlinePx: 1.4,
+  outlinePxSmall: 1,
   bloomStrength: 0.7,
   bloomRadius: 0.5,
   bloomThreshold: 1.0,
@@ -236,6 +238,8 @@ export const GROUPS: { name: string; items: [TuneKey, Meta][] }[] = [
     name: '그래픽',
     items: [
       ['exposure', { label: '밝기 (노출)', min: 0.3, max: 2, step: 0.01 }],
+      ['outlinePx', { label: '테두리 두께 (px)', min: 0, max: 5, step: 0.1 }],
+      ['outlinePxSmall', { label: '재료 조각 테두리 두께 (px)', min: 0, max: 5, step: 0.1 }],
       ['bloomStrength', { label: '빛 번짐 세기', min: 0, max: 3, step: 0.05 }],
       ['bloomRadius', { label: '빛 번짐 반경', min: 0, max: 1.5, step: 0.05 }],
       ['bloomThreshold', { label: '빛 번짐 시작 밝기', min: 0, max: 3, step: 0.05 }],

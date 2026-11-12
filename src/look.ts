@@ -47,33 +47,100 @@ function toToon(m: THREE.Material): THREE.Material {
 
 const OUTLINE_COLOR = 0x1a1210;
 
-/** 뒷면을 법선 방향으로 부풀린 외곽선 재질 (InstancedMesh 에서도 동작) */
-export function outlineMat(thickness: number, color: THREE.ColorRepresentation = OUTLINE_COLOR) {
+/**
+ * 외곽선 두께는 화면 픽셀 단위로 고정한다 (가까워도 멀어도 같은 두께).
+ * 값은 Post.render 에서 매 프레임 T 와 화면 크기로 갱신한다.
+ */
+export const outlineUniforms = {
+  outlinePx: { value: 1.5 },
+  outlinePxSmall: { value: 1.1 },
+  outlineRes: { value: new THREE.Vector2(1280, 720) },
+};
+
+/**
+ * 같은 위치의 꼭짓점 법선을 평균낸 'outlineNormal' 을 만든다.
+ * 상자·원기둥처럼 각진 모서리에서 외곽선이 갈라지지 않게 한다.
+ */
+const smoothed = new WeakSet<THREE.BufferGeometry>();
+export function ensureOutlineNormals(g: THREE.BufferGeometry) {
+  if (smoothed.has(g)) return;
+  smoothed.add(g);
+  if (!g.attributes.normal) g.computeVertexNormals();
+  const pos = g.attributes.position;
+  const nor = g.attributes.normal;
+  const sum = new Map<string, [number, number, number]>();
+  const key = (i: number) =>
+    `${Math.round(pos.getX(i) * 1e4)},${Math.round(pos.getY(i) * 1e4)},${Math.round(pos.getZ(i) * 1e4)}`;
+  for (let i = 0; i < pos.count; i++) {
+    const k = key(i);
+    const v = sum.get(k) ?? [0, 0, 0];
+    v[0] += nor.getX(i);
+    v[1] += nor.getY(i);
+    v[2] += nor.getZ(i);
+    sum.set(k, v);
+  }
+  const out = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const v = sum.get(key(i))!;
+    const l = Math.hypot(v[0], v[1], v[2]) || 1;
+    out[i * 3] = v[0] / l;
+    out[i * 3 + 1] = v[1] / l;
+    out[i * 3 + 2] = v[2] / l;
+  }
+  g.setAttribute('outlineNormal', new THREE.BufferAttribute(out, 3));
+}
+
+/**
+ * 뒷면을 화면 공간에서 법선 방향으로 일정 픽셀만큼 밀어낸 외곽선 재질.
+ * InstancedMesh 에서도 동작한다. small: 작은 재료 조각용 (더 얇게)
+ */
+export function outlineMat(small = false, color: THREE.ColorRepresentation = OUTLINE_COLOR) {
   const m = new THREE.MeshBasicMaterial({ color, side: THREE.BackSide });
   m.onBeforeCompile = (shader) => {
-    shader.uniforms.outlineW = { value: thickness };
+    shader.uniforms.outlineW = small ? outlineUniforms.outlinePxSmall : outlineUniforms.outlinePx;
+    shader.uniforms.outlineRes = outlineUniforms.outlineRes;
     shader.vertexShader = shader.vertexShader
-      .replace('void main() {', 'uniform float outlineW;\nvoid main() {')
-      .replace('#include <begin_vertex>', 'vec3 transformed = position + normalize(normal) * outlineW;');
+      .replace(
+        'void main() {',
+        'uniform float outlineW;\nuniform vec2 outlineRes;\nattribute vec3 outlineNormal;\nvoid main() {',
+      )
+      .replace(
+        '#include <project_vertex>',
+        `#include <project_vertex>
+        {
+          vec3 on = outlineNormal;
+          #ifdef USE_INSTANCING
+            on = mat3(instanceMatrix) * on;
+          #endif
+          vec3 vn = mat3(modelViewMatrix) * on;
+          vec2 dir = (projectionMatrix * vec4(vn, 0.0)).xy;
+          float l = length(dir);
+          dir = l > 1e-5 ? dir / l : vec2(0.0);
+          gl_Position.xy += dir * outlineW * 2.0 / outlineRes * gl_Position.w;
+        }`,
+      );
   };
-  m.customProgramCacheKey = () => 'outline';
+  m.customProgramCacheKey = () => 'outline-px';
   return m;
 }
 
-function addOutline(mesh: THREE.Mesh, thickness: number) {
-  const o = new THREE.Mesh(mesh.geometry, outlineMat(thickness));
+/** mesh 에 외곽선 자식을 붙인다 */
+export function addOutline(mesh: THREE.Mesh, small = false) {
+  ensureOutlineNormals(mesh.geometry);
+  const o = new THREE.Mesh(mesh.geometry, outlineMat(small));
   o.name = 'outline';
   o.raycast = () => {};
   mesh.add(o);
+  return o;
 }
 
-const NO_OUTLINE = new Set(['BoxGeometry', 'PlaneGeometry']);
+const NO_OUTLINE = new Set(['PlaneGeometry', 'CircleGeometry']);
 
 /**
  * 하위의 모든 MeshStandardMaterial 을 카툰 재질로 바꾸고,
- * 작은 둥근 물체에는 외곽선을 붙인다.
+ * 너무 크지 않은 물체에는 외곽선을 붙인다.
  */
-export function toonify(root: THREE.Object3D, outline = 0.006) {
+export function toonify(root: THREE.Object3D, outline = true) {
   const meshes: THREE.Mesh[] = [];
   root.traverse((o) => {
     if ((o as THREE.Mesh).isMesh && o.name !== 'outline') meshes.push(o as THREE.Mesh);
@@ -81,11 +148,11 @@ export function toonify(root: THREE.Object3D, outline = 0.006) {
   for (const mesh of meshes) {
     const orig = mesh.material as THREE.Material;
     mesh.material = Array.isArray(mesh.material) ? mesh.material.map(toToon) : toToon(orig);
-    if (outline <= 0 || !(orig instanceof THREE.MeshStandardMaterial) || orig.transparent) continue;
+    if (!outline || !(orig instanceof THREE.MeshStandardMaterial) || orig.transparent) continue;
     if (NO_OUTLINE.has(mesh.geometry.type) || (mesh as THREE.InstancedMesh).isInstancedMesh) continue;
     mesh.geometry.computeBoundingSphere();
     if ((mesh.geometry.boundingSphere?.radius ?? 0) > 1.2) continue;
-    addOutline(mesh, outline);
+    addOutline(mesh);
   }
 }
 
@@ -94,11 +161,14 @@ export function toonify(root: THREE.Object3D, outline = 0.006) {
 export class Post {
   readonly composer: EffectComposer;
   readonly bloom: UnrealBloomPass;
+  private size = new THREE.Vector2();
 
   constructor(private renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.95;
-    this.composer = new EffectComposer(renderer);
+    // 후처리 렌더 타깃에도 MSAA 를 걸어 외곽선·모서리의 계단 현상을 줄인다
+    const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+    this.composer = new EffectComposer(renderer, rt);
     this.composer.addPass(new RenderPass(scene, camera));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.7, 0.5, 1.0);
     this.composer.addPass(this.bloom);
@@ -113,6 +183,11 @@ export class Post {
   }
 
   render() {
+    const size = this.renderer.getDrawingBufferSize(this.size);
+    const dpr = this.renderer.getPixelRatio();
+    outlineUniforms.outlineRes.value.copy(size);
+    outlineUniforms.outlinePx.value = T.outlinePx * dpr;
+    outlineUniforms.outlinePxSmall.value = T.outlinePxSmall * dpr;
     this.renderer.toneMappingExposure = T.exposure;
     this.bloom.strength = T.bloomStrength;
     this.bloom.radius = T.bloomRadius;
