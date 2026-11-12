@@ -49,6 +49,10 @@ html, body {
 .crow .bar { flex: 1; height: 11px; }
 .small { font-size: 12px; opacity: .8; }
 .dim { opacity: .55; }
+.glabel.oil { margin-top: 6px; margin-bottom: 4px; }
+.bar.oil { height: 9px; background: rgba(255,255,255,.15); }
+.bar.oil .zone { position: absolute; left: var(--ol, 35%); width: var(--ow, 35%); top: 0; bottom: 0; background: rgba(105, 220, 120, .45); }
+#oil-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: linear-gradient(90deg, #f7dc7a, #e7a92a); border-right: 2px solid #fff; }
 .glabel.toss { margin-top: 9px; margin-bottom: 5px; }
 .bar.toss { height: 8px; background: rgba(255,255,255,.15); }
 #toss-fill { height: 100%; width: 0; background: linear-gradient(90deg, #ffb347, #ff5a2a); border-radius: 99px; }

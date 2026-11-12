@@ -20,6 +20,7 @@ import { Wok } from './wok';
 import { FireFx, Post, toonify } from './look';
 import { T, loadTuning } from './tuning';
 import { DebugPanel, isTyping } from './debug';
+import { OilBottle } from './oil';
 
 // 디버그 패널에서 바꿔 둔 수치를 먼저 불러온다
 loadTuning();
@@ -124,6 +125,9 @@ class Game {
   readonly particleView = new ParticleRenderer(this.particles);
   readonly steam = new Steam(this.world.scene);
   readonly fire = new FireFx(this.world.scene);
+  readonly oil = new OilBottle(this.world.scene);
+  /** 지금 웍에 든 기름 (ml) */
+  private oilMl = 0;
   readonly debug = new DebugPanel();
   readonly post: Post;
   private camBase = new THREE.Vector3();
@@ -170,14 +174,26 @@ class Game {
     const cv = this.canvas;
     let lastX = 0;
     let lastY = 0;
+    let lastT = 0;
     let pid = -1;
+    let holdingOil = false;
+    const ndc = new THREE.Vector2();
+    const toNdc = (e: PointerEvent) => ndc.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
     cv.addEventListener('pointerdown', (e) => {
       if (!this.active || pid !== -1 || this.modalOpen()) return;
       pid = e.pointerId;
       cv.setPointerCapture(pid);
       lastX = e.clientX;
       lastY = e.clientY;
-      this.wok.grabbed = true;
+      lastT = e.timeStamp;
+      // 기름통을 누르면 기름통을 들고, 아니면 웍을 잡는다
+      holdingOil = this.oil.hitTest(toNdc(e), this.camera);
+      if (holdingOil) {
+        this.oil.grab();
+        this.oil.drag(ndc, this.camera, 0);
+      } else {
+        this.wok.grabbed = true;
+      }
       cv.classList.add('grabbing');
       if (!this.hinted) {
         this.hinted = true;
@@ -186,6 +202,15 @@ class Game {
     });
     cv.addEventListener('pointermove', (e) => {
       if (e.pointerId !== pid) return;
+      if (holdingOil) {
+        const dt = Math.max(0.004, (e.timeStamp - lastT) / 1000);
+        const speed = Math.hypot(e.clientX - lastX, e.clientY - lastY) / window.innerHeight / dt;
+        this.oil.drag(toNdc(e), this.camera, speed);
+        lastX = e.clientX;
+        lastY = e.clientY;
+        lastT = e.timeStamp;
+        return;
+      }
       // 화면 높이 기준으로 정규화: 어느 기기에서나 비슷한 손놀림
       const s = T.dragSensitivity / window.innerHeight;
       this.wok.nudge((e.clientX - lastX) * s, (e.clientY - lastY) * s);
@@ -195,7 +220,9 @@ class Game {
     const up = (e: PointerEvent) => {
       if (e.pointerId !== pid) return;
       pid = -1;
-      this.wok.release();
+      if (holdingOil) this.oil.release();
+      else this.wok.release();
+      holdingOil = false;
       cv.classList.remove('grabbing');
     };
     cv.addEventListener('pointerup', up);
@@ -319,6 +346,7 @@ class Game {
     this.world.plate.visible = false;
     this.plateT = -1;
     this.wok.release();
+    this.oil.reset();
     this.particles.clearAll();
     this.resetDish();
   }
@@ -395,7 +423,7 @@ class Game {
     $('serve').classList.toggle('hidden', research);
     $('ticket').classList.add('hidden');
     $('hint').textContent = research
-      ? '재료를 넣고 웍을 끌어서 볶은 뒤 맛보기 · 재료마다 익는 속도가 달라요'
+      ? '기름통을 꾹 눌러 웍 위로 끌고 가서 흔들면 기름이 나와요 · 재료를 넣고 볶은 뒤 맛보기'
       : '웍을 누른 채로 끌어서 흔드세요 · 높이 띄울수록 보너스!';
   }
 
@@ -435,6 +463,16 @@ class Game {
     }
     if (under.length) {
       this.toast(`아직 덜 익었어요: ${under.map(ingLabel).join(', ')}`, '조금 더 볶은 뒤 맛보세요', 'bad');
+      return;
+    }
+
+    const oil = this.oilRatio();
+    if (oil < T.oilMin) {
+      this.toast(this.oilMl < 0.05 ? '기름을 안 넣었어요' : '기름이 너무 적어요', '맛볼 수 없어요 · 기름통을 꾹 눌러 웍 위로 끌고 가서 흔드세요', 'bad');
+      return;
+    }
+    if (oil > T.oilMax) {
+      this.toast('기름이 너무 많아요', '맛볼 수 없어요 · 버리고 다시 해 보세요', 'bad');
       return;
     }
 
@@ -531,6 +569,8 @@ class Game {
   // ───────────── 웍 ─────────────
 
   private resetDish() {
+    this.oilMl = 0;
+    this.wok.setOil(0);
     this.counts.clear();
     this.order = [];
     this.dishTotal = 0;
@@ -630,7 +670,10 @@ class Game {
     cookScore = typesN ? (cookScore - 1) / typesN : 0;
     const evenScore = clamp(1 - ((typesN ? sdSum / typesN : 0) - T.evenTolerance) / 0.5, 0.5, 1);
     const burnScore = clamp(1 - s.burntFrac * T.burnPenalty, 0, 1);
-    const base = ingScore * amountScore * ratioScore * orderScore * cookScore * evenScore * burnScore;
+    const oil = this.oilRatio();
+    const oilOff = oil < T.oilMin ? T.oilMin - oil : oil > T.oilMax ? oil - T.oilMax : 0;
+    const oilScore = clamp(1 - T.oilPenalty * oilOff, 0.3, 1);
+    const base = ingScore * amountScore * ratioScore * orderScore * cookScore * evenScore * burnScore * oilScore;
     // 웍질 보너스: 재료가 높이 떠오를수록 가산점 (기본 점수에 비례해서 붙는다)
     const toss = this.tossFrac();
     const quality = Math.min(1, base * (1 + T.tossQuality * toss));
@@ -648,6 +691,7 @@ class Game {
       [cookScore, cookMsg],
       [evenScore, '익은 게 들쭉날쭉해요.'],
       [burnScore, '탔잖아요!'],
+      [oilScore, oil < T.oilMin ? '기름이 적어서 뻑뻑해요.' : '너무 느끼해요…'],
     ];
     issues.sort((a, b) => a[0] - b[0]);
     let comment: string;
@@ -661,6 +705,15 @@ class Game {
     const tip = quality >= T.tipAbove ? Math.round((recipe.price * T.tipRate * patienceFrac) / 100) * 100 : 0;
     const tossPay = pay > 0 ? Math.round((recipe.price * T.tossPay * toss) / 100) * 100 : 0;
     return { quality, stars, pay, tip, toss, tossPay, comment };
+  }
+
+  /** 재료 양에 맞는 적정 기름 대비 지금 기름 비율 (1 = 적정) */
+  private oilRatio() {
+    let portions = 0;
+    for (const n of this.counts.values()) portions += n;
+    const ideal = portions * T.oilPerPortion;
+    if (ideal <= 0) return this.oilMl > 0 ? 1 : 0;
+    return this.oilMl / ideal;
   }
 
   /** 웍질 보너스 (1 = 100%, 상한 없음): 조각당 누적 떠오른 높이 기준 */
@@ -877,6 +930,15 @@ class Game {
     const sp = this.wok.speed;
     if (sp > 1.3 && this.stats.live > 0) this.sfx.play('whoosh', clamp(sp / 4, 0.15, 0.6), 0.22);
 
+    // 기름통
+    this.oil.update(dt, this.wok);
+    if (this.oil.landed > 0) {
+      this.oilMl += this.oil.landed;
+      this.oil.landed = 0;
+      this.wok.setOil(this.oilMl);
+    }
+    this.particles.oilRatio = this.counts.size ? this.oilRatio() : 1;
+
     this.stats = this.particles.stats();
     this.types = this.particles.typeStats();
     const s = this.stats;
@@ -1022,6 +1084,13 @@ class Game {
       else label = '딱 좋음!';
     }
     $('cook-text').textContent = label;
+    const or = this.oilRatio();
+    $('oil-text').textContent = this.oilMl > 0.05 || this.counts.size
+      ? `${Math.round(this.oilMl)}ml · ${!this.counts.size ? '-' : or < T.oilMin ? '적음' : or > T.oilMax ? '많음' : '적당'}`
+      : '-';
+    gauge.style.setProperty('--ol', `${clamp(T.oilMin / 2, 0, 1) * 100}%`);
+    gauge.style.setProperty('--ow', `${clamp((T.oilMax - T.oilMin) / 2, 0, 1) * 100}%`);
+    $('oil-fill').style.width = `${this.counts.size ? clamp(or / 2, 0, 1) * 100 : this.oilMl > 0 ? 10 : 0}%`;
     $('amount').textContent = has && this.dishTotal ? `${Math.round((s.live / this.dishTotal) * 100)}%` : '-';
     $('burnt').textContent = has ? `${Math.round(s.burntFrac * 100)}%` : '-';
     const toss = has ? this.tossFrac() : 0;

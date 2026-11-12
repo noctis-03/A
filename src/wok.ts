@@ -26,6 +26,19 @@ export class Wok {
   readonly prevMatrix = new THREE.Matrix4();
   readonly inverse = new THREE.Matrix4();
   readonly group = new THREE.Group();
+  private oilSheen = new THREE.Mesh(
+    new THREE.CircleGeometry(1, 32),
+    new THREE.MeshBasicMaterial({ color: 0xf2c14a, transparent: true, opacity: 0.5, depthWrite: false }),
+  );
+
+  /** 기름 양(ml)에 맞춰 바닥 기름 막 크기를 바꾼다 */
+  setOil(ml: number) {
+    this.oilSheen.visible = ml > 0.05;
+    const r = Math.min(0.17, 0.035 + Math.sqrt(ml) * 0.028);
+    this.oilSheen.scale.setScalar(r);
+    // 곡면 바닥에서 반지름 r 일 때의 높이만큼 띄운다
+    this.oilSheen.position.y = this.R - Math.sqrt(this.R * this.R - r * r * 0.6) + 0.004;
+  }
 
   private pos = new THREE.Vector3();
   private quat = new THREE.Quaternion();
@@ -131,5 +144,11 @@ export class Wok {
 
     this.group.add(inner, outer, rim, handle);
     toonify(this.group, 0.003);
+
+    // 웍 바닥에 고인 기름 (양에 따라 넓어진다)
+    this.oilSheen.rotation.x = -Math.PI / 2;
+    this.oilSheen.position.y = 0.006;
+    this.oilSheen.visible = false;
+    this.group.add(this.oilSheen);
   }
 }

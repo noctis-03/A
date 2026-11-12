@@ -20,16 +20,28 @@ export const DEFAULTS = {
   burnRate: 0.3,
 
   // ── 재료별 익는 속도 (밥 = 1) ── 느린 재료를 먼저 넣어야 다 같이 맞게 익는다
+  // 넣는 순서: 대파(파기름) → 당근·베이컨 → 양파 → 계란 → 햄 → 밥 → 새우 → 김치 → 치즈
   speedRice: 1,
-  speedScallion: 2,
-  speedEgg: 0.8,
+  speedScallion: 0.7,
+  speedEgg: 0.85,
   speedKimchi: 1.2,
   speedHam: 0.9,
-  speedOnion: 0.7,
-  speedCarrot: 0.6,
+  speedOnion: 0.8,
+  speedCarrot: 0.75,
   speedShrimp: 1.1,
-  speedBacon: 0.7,
+  speedBacon: 0.75,
   speedCheese: 2.5,
+
+  // ── 기름 ──
+  oilPerPortion: 6,
+  oilMin: 0.7,
+  oilMax: 1.4,
+  oilFlow: 40,
+  oilShakeMin: 0.35,
+  oilDrop: 0.5,
+  oilDryFriction: 0.9,
+  oilDryBurn: 0.4,
+  oilPenalty: 0.6,
 
   // ── 레시피 연구 ──
   tastesPerRound: 2,
@@ -139,6 +151,20 @@ export const GROUPS: { name: string; items: [TuneKey, Meta][] }[] = [
       ['speedShrimp', { label: '🍤 새우', min: 0.1, max: 4, step: 0.05 }],
       ['speedBacon', { label: '🥓 베이컨', min: 0.1, max: 4, step: 0.05 }],
       ['speedCheese', { label: '🧀 치즈', min: 0.1, max: 4, step: 0.05 }],
+    ],
+  },
+  {
+    name: '기름',
+    items: [
+      ['oilPerPortion', { label: '재료 한 줌당 적정 기름 (ml)', min: 0, max: 20, step: 0.5 }],
+      ['oilMin', { label: '적정량 최소 (적정 대비 비율)', min: 0, max: 1.5, step: 0.05 }],
+      ['oilMax', { label: '적정량 최대 (적정 대비 비율)', min: 0.5, max: 3, step: 0.05 }],
+      ['oilFlow', { label: '흔들 때 나오는 양 (방울/초, 최대)', min: 1, max: 150, step: 1 }],
+      ['oilShakeMin', { label: '기름이 나오기 시작하는 흔들기 세기', min: 0, max: 4, step: 0.05 }],
+      ['oilDrop', { label: '한 방울 양 (ml)', min: 0.05, max: 3, step: 0.05 }],
+      ['oilDryFriction', { label: '기름 없을 때 더 달라붙는 정도', min: 0, max: 3, step: 0.05 }],
+      ['oilDryBurn', { label: '기름 없을 때 빨리 타는 정도', min: 0, max: 1.5, step: 0.05 }],
+      ['oilPenalty', { label: '기름 양 어긋남 감점 (장사)', min: 0, max: 2, step: 0.05 }],
     ],
   },
   {

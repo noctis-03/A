@@ -63,17 +63,18 @@ export interface Recipe {
 
 /** 레시피 북. 찾기 판정은 재료 종류만 본다 (밥 포함) */
 export const RECIPES: Recipe[] = [
-  { id: 'scallion-egg', name: '파 계란 볶음밥', price: 6000, steps: [['egg', 2], ['rice', 2], ['scallion', 1]] },
-  { id: 'kimchi', name: '김치 볶음밥', price: 7000, steps: [['rice', 2], ['kimchi', 3], ['scallion', 1]] },
-  { id: 'kimchi-egg', name: '김치 계란 볶음밥', price: 7000, steps: [['egg', 2], ['rice', 2], ['kimchi', 2]] },
-  { id: 'ham-kimchi', name: '햄 김치 볶음밥', price: 8000, steps: [['ham', 2], ['rice', 2], ['kimchi', 2]] },
-  { id: 'lunchbox', name: '도시락 볶음밥', price: 8000, steps: [['egg', 2], ['ham', 2], ['rice', 2], ['scallion', 1]] },
-  { id: 'onion-ham', name: '양파 햄 볶음밥', price: 8000, steps: [['onion', 2], ['ham', 2], ['rice', 2]] },
-  { id: 'veggie', name: '야채 볶음밥', price: 7500, steps: [['carrot', 2], ['onion', 2], ['rice', 2], ['scallion', 2]] },
-  { id: 'five-color', name: '오색 볶음밥', price: 10000, steps: [['carrot', 1], ['egg', 2], ['ham', 1], ['rice', 2], ['scallion', 1]] },
-  { id: 'shrimp', name: '새우 볶음밥', price: 9000, steps: [['egg', 2], ['rice', 2], ['shrimp', 2], ['scallion', 1]] },
-  { id: 'shrimp-veggie', name: '새우 야채 볶음밥', price: 9500, steps: [['carrot', 1], ['onion', 2], ['rice', 2], ['shrimp', 2]] },
-  { id: 'bacon-kimchi', name: '베이컨 김치 볶음밥', price: 9500, steps: [['bacon', 2], ['onion', 1], ['rice', 2], ['kimchi', 2]] },
+  // 대부분 파기름부터: 대파를 먼저 볶아 향을 낸다
+  { id: 'scallion-egg', name: '파 계란 볶음밥', price: 6000, steps: [['scallion', 1], ['egg', 2], ['rice', 2]] },
+  { id: 'kimchi', name: '김치 볶음밥', price: 7000, steps: [['scallion', 1], ['rice', 2], ['kimchi', 3]] },
+  { id: 'kimchi-egg', name: '김치 계란 볶음밥', price: 7500, steps: [['scallion', 1], ['egg', 2], ['rice', 2], ['kimchi', 2]] },
+  { id: 'ham-kimchi', name: '햄 김치 볶음밥', price: 8000, steps: [['scallion', 1], ['ham', 2], ['rice', 2], ['kimchi', 2]] },
+  { id: 'lunchbox', name: '도시락 볶음밥', price: 8000, steps: [['scallion', 1], ['egg', 2], ['ham', 2], ['rice', 2]] },
+  { id: 'onion-ham', name: '양파 햄 볶음밥', price: 8000, steps: [['scallion', 1], ['onion', 2], ['ham', 2], ['rice', 2]] },
+  { id: 'veggie', name: '야채 볶음밥', price: 7500, steps: [['scallion', 2], ['carrot', 2], ['onion', 2], ['rice', 2]] },
+  { id: 'five-color', name: '오색 볶음밥', price: 10000, steps: [['scallion', 1], ['carrot', 1], ['egg', 2], ['ham', 1], ['rice', 2]] },
+  { id: 'shrimp', name: '새우 볶음밥', price: 9000, steps: [['scallion', 1], ['egg', 2], ['rice', 2], ['shrimp', 2]] },
+  { id: 'shrimp-veggie', name: '새우 야채 볶음밥', price: 9500, steps: [['scallion', 1], ['carrot', 1], ['onion', 2], ['rice', 2], ['shrimp', 2]] },
+  { id: 'bacon-kimchi', name: '베이컨 김치 볶음밥', price: 9500, steps: [['scallion', 1], ['bacon', 2], ['onion', 1], ['rice', 2], ['kimchi', 2]] },
   { id: 'cheese-kimchi', name: '치즈 김치 볶음밥', price: 9000, steps: [['rice', 2], ['kimchi', 2], ['cheese', 2]] },
   { id: 'bacon-cheese', name: '베이컨 치즈 볶음밥', price: 11000, steps: [['bacon', 2], ['egg', 1], ['rice', 2], ['cheese', 3]] },
 ];

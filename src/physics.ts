@@ -4,6 +4,8 @@ import type { Wok } from './wok';
 import { outlineMat, toonMat } from './look';
 import { T } from './tuning';
 
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
 export const FREE = 0;
 export const LIVE = 1; // 웍 안 / 공중에 있는, 아직 요리에 포함되는 조각
 export const SPILLED = 2; // 조리대나 바닥에 떨어진 조각
@@ -60,6 +62,8 @@ export class Particles {
   state = new Uint8Array(this.max);
 
   private speed = new Float32Array(INGREDIENTS.length);
+  /** 적정 기름 대비 지금 기름 비율 (1 = 적정). 적으면 달라붙고 빨리 탄다 */
+  oilRatio = 1;
 
   /** 이번 스텝에서 새로 흘린 조각 수 (게임 쪽에서 읽고 0으로 리셋) */
   newlySpilled = 0;
@@ -170,7 +174,10 @@ export class Particles {
     const drag = 1 - T.airDrag * h;
     const G = T.gravity;
     const RESTITUTION = T.restitution;
-    const FRICTION = T.friction;
+    // 기름이 모자랄수록 마찰이 커지고 더 빨리 탄다
+    const dry = clamp01(1 - this.oilRatio);
+    const FRICTION = T.friction * (1 + T.oilDryFriction * dry) * (this.oilRatio > 1 ? Math.max(0.6, 1 - (this.oilRatio - 1) * 0.3) : 1);
+    const burnStart = T.burnStart - T.oilDryBurn * dry;
     const STICK = T.stickiness;
     const COOK_RATE = T.cookRate;
     const TOSS_MIN = T.tossMin;
@@ -332,7 +339,7 @@ export class Particles {
           // 다른 재료 위에 얹혀 있음 → 천천히 익는다
           this.cook[i] += COOK_RATE * speed[this.type[i]] * T.cookPileFactor * heat * h;
         }
-        if (this.cook[i] > T.burnStart) this.burn[i] += T.burnRate * h * heat;
+        if (this.cook[i] > burnStart) this.burn[i] += T.burnRate * h * heat;
       }
 
       if (!touched) {
