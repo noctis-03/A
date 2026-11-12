@@ -33,7 +33,7 @@ export const INGREDIENTS: IngDef[] = [
   { id: 'rice', name: '밥', emoji: '🍚', count: 46, radius: 0.0105, shape: 'grain', raw: 0xf6f1e4, cooked: 0xe2b566, speedKey: 'speedRice' },
   { id: 'scallion', name: '대파', emoji: '🌿', count: 6, radius: 0.017, shape: 'ring', raw: 0x58b54a, cooked: 0x7f9a35, speedKey: 'speedScallion' },
   { id: 'egg', name: '계란', emoji: '🥚', count: 6, radius: 0.02, shape: 'chunk', raw: 0xffd84a, cooked: 0xf2b53a, speedKey: 'speedEgg' },
-  { id: 'kimchi', name: '김치', emoji: '🌶️', count: 6, radius: 0.02, shape: 'leaf', raw: 0xe2452f, cooked: 0xb8341f, speedKey: 'speedKimchi' },
+  { id: 'kimchi', name: '김치', emoji: '🌶️', count: 6, radius: 0.016, shape: 'leaf', raw: 0xe2452f, cooked: 0xb8341f, speedKey: 'speedKimchi' },
   { id: 'ham', name: '햄', emoji: '🍖', count: 5, radius: 0.02, shape: 'slab', raw: 0xf29a9a, cooked: 0xc9665a, speedKey: 'speedHam' },
   { id: 'onion', name: '양파', emoji: '🧅', count: 6, radius: 0.019, shape: 'petal', raw: 0xf4efe2, cooked: 0xd29a52, speedKey: 'speedOnion' },
   { id: 'carrot', name: '당근', emoji: '🥕', count: 6, radius: 0.016, shape: 'cube', raw: 0xff8a2a, cooked: 0xd9701c, speedKey: 'speedCarrot' },
