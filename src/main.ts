@@ -624,7 +624,7 @@ class Game {
           const no = String(i + 1).padStart(2, '0');
           if (!this.found.has(r.id)) {
             const hint = canFind(r) ? '지금 재료로 찾을 수 있어요' : '아직 없는 재료가 필요해요';
-            return `<div class="rcard locked"><div class="rc-top"><span class="rc-no">No. ${no}</span></div><div class="rc-name">???</div><div class="rc-hint">${hint}</div></div>`;
+            return `<div class="rcard locked"><div class="rc-top"><span class="rc-no">No. ${no}</span></div><div class="rc-name" aria-label="재료 ${r.steps.length}가지">${'?'.repeat(r.steps.length)}</div><div class="rc-hint">${hint}</div></div>`;
           }
           const steps = r.steps
             .map(([id, n], k) => `<span class="rc-step"><span class="no">${k + 1}</span>${tok(id, 'sm')}${ingDef(id).name}${dots(n)}</span>`)
