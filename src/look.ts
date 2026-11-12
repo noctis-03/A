@@ -3,6 +3,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { T } from './tuning';
 
 // ───────────────────────── 카툰(셀) 셰이딩 ─────────────────────────
 
@@ -94,7 +95,7 @@ export class Post {
   readonly composer: EffectComposer;
   readonly bloom: UnrealBloomPass;
 
-  constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {
+  constructor(private renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.95;
     this.composer = new EffectComposer(renderer);
@@ -112,6 +113,10 @@ export class Post {
   }
 
   render() {
+    this.renderer.toneMappingExposure = T.exposure;
+    this.bloom.strength = T.bloomStrength;
+    this.bloom.radius = T.bloomRadius;
+    this.bloom.threshold = T.bloomThreshold;
     this.composer.render();
   }
 }
@@ -185,7 +190,7 @@ export class FireFx {
       p.vz = Math.sin(a) * 0.25;
       p.vy = 0.4 + Math.random() * 0.6 * strength;
       p.max = p.life = 0.3 + Math.random() * 0.3;
-      p.size = 0.04 + 0.07 * strength * (0.6 + Math.random() * 0.6);
+      p.size = (0.04 + 0.07 * strength * (0.6 + Math.random() * 0.6)) * T.flameSize;
       p.grav = -0.6;
       p.s.material.color.setRGB(1.8, 0.65 + Math.random() * 0.3, 0.18);
       p.s.visible = true;

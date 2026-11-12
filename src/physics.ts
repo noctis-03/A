@@ -2,18 +2,13 @@ import * as THREE from 'three';
 import { INGREDIENTS, type Shape } from './ingredients';
 import type { Wok } from './wok';
 import { outlineMat, toonMat } from './look';
+import { T } from './tuning';
 
 export const FREE = 0;
 export const LIVE = 1; // 웍 안 / 공중에 있는, 아직 요리에 포함되는 조각
 export const SPILLED = 2; // 조리대나 바닥에 떨어진 조각
 
-const G = 9.8;
-const RESTITUTION = 0.05;
-const FRICTION = 0.38;
-const COOK_RATE = 0.115; // 웍 바닥에 닿아 있을 때 초당 익는 정도
-const SPILL_LIFE = 7;
-/** 이보다 낮게 뜬 건 웍질로 치지 않는다 (m) */
-const TOSS_MIN = 0.05;
+// 물리·익힘 수치는 tuning.ts 의 T 에서 매 스텝 읽는다
 
 /** 웍 밖 지형 높이: 조리대 / 트럭 바닥 / 트럭 밖 길 */
 function groundHeight(x: number, z: number) {
@@ -142,7 +137,14 @@ export class Particles {
   step(h: number, wok: Wok, heat: number) {
     const { px, py, pz, vx, vy, vz, r, state } = this;
     const n = this.count;
-    const drag = 1 - 0.25 * h;
+    const drag = 1 - T.airDrag * h;
+    const G = T.gravity;
+    const RESTITUTION = T.restitution;
+    const FRICTION = T.friction;
+    const STICK = T.stickiness;
+    const COOK_RATE = T.cookRate;
+    const TOSS_MIN = T.tossMin;
+    const SPILL_LIFE = T.spillLife;
 
     for (let i = 0; i < n; i++) {
       if (state[i] === FREE) continue;
@@ -264,7 +266,7 @@ export class Particles {
             const tz = rz - nz * tn;
             const tl = Math.sqrt(tx * tx + ty * ty + tz * tz);
             if (tl > 1e-6) {
-              const f = Math.min(tl, FRICTION * jn + tl * 2.5 * h) / tl;
+              const f = Math.min(tl, FRICTION * jn + tl * STICK * h) / tl;
               rx -= tx * f;
               ry -= ty * f;
               rz -= tz * f;
@@ -280,7 +282,7 @@ export class Particles {
           vz[i] = sz + rz;
 
           // 가열: 바닥 쪽일수록 뜨겁다
-          const hot = ly < 0.075 ? 1 : 0.55;
+          const hot = ly < 0.075 ? 1 : T.cookSideFactor;
           this.cook[i] += COOK_RATE * hot * heat * h;
           // 웍질: 공중에 떴다가 웍 안으로 다시 떨어지면 떠오른 높이만큼 점수
           if (this.air[i] > 0.08) {
@@ -295,9 +297,9 @@ export class Particles {
           this.peakY[i] = py[i];
         } else if (inside) {
           // 다른 재료 위에 얹혀 있음 → 천천히 익는다
-          this.cook[i] += COOK_RATE * 0.22 * heat * h;
+          this.cook[i] += COOK_RATE * T.cookPileFactor * heat * h;
         }
-        if (this.cook[i] > 1.7) this.burn[i] += 0.3 * h * heat;
+        if (this.cook[i] > T.burnStart) this.burn[i] += T.burnRate * h * heat;
       }
 
       if (!touched) {
@@ -433,7 +435,7 @@ export class ParticleRenderer {
       q[o + 3] = nw;
 
       let s = p.r[i];
-      if (p.state[i] === SPILLED && p.age[i] > SPILL_LIFE - 1) s *= Math.max(0, SPILL_LIFE - p.age[i]);
+      if (p.state[i] === SPILLED && p.age[i] > T.spillLife - 1) s *= Math.max(0, T.spillLife - p.age[i]);
       this.pos.set(p.px[i], p.py[i], p.pz[i]);
       this.quat.set(nx, ny, nz, nw);
       this.scl.set(s, s, s);

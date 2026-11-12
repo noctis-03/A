@@ -6,20 +6,18 @@ import { ParticleRenderer, Particles, type DishStats } from './physics';
 import { buildWorld, Steam } from './scene';
 import { Wok } from './wok';
 import { FireFx, Post, toonify } from './look';
+import { T, loadTuning } from './tuning';
+import { DebugPanel, isTyping } from './debug';
+
+// 디버그 패널에서 바꿔 둔 수치를 먼저 불러온다
+loadTuning();
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 const won = (n: number) => n.toLocaleString('ko-KR');
 
 const SUBSTEP = 1 / 240;
-const DAY_LENGTH = 150;
-const COOK_MIN = 0.85;
-const COOK_MAX = 1.25;
 const GAUGE_MAX = 1.6;
-/** 재료 1조각당 이만큼(m) 높이를 누적하면 웍질 보너스 100% (상한 없음, 계속 쌓인다) */
-const TOSS_FULL = 0.4;
-const TOSS_QUALITY = 0.2;
-const TOSS_PAY = 0.3;
 
 interface Verdict {
   quality: number;
@@ -34,7 +32,7 @@ interface Verdict {
 class Game {
   state: 'title' | 'playing' | 'dayend' = 'title';
   day = 1;
-  timeLeft = DAY_LENGTH;
+  timeLeft = T.dayLength;
   money = 0;
   dayMoney = 0;
   served = 0;
@@ -65,6 +63,7 @@ class Game {
   readonly particleView = new ParticleRenderer(this.particles);
   readonly steam = new Steam(this.world.scene);
   readonly fire = new FireFx(this.world.scene);
+  readonly debug = new DebugPanel();
   readonly post: Post;
   private camBase = new THREE.Vector3();
   private shake = 0;
@@ -83,6 +82,7 @@ class Game {
     window.addEventListener('resize', () => this.resize());
     this.bindInput();
     this.buildUi();
+    this.debug.setInfo(() => this.debugInfo());
     this.renderer.setAnimationLoop(() => this.frame());
   }
 
@@ -109,7 +109,7 @@ class Game {
     cv.addEventListener('pointermove', (e) => {
       if (e.pointerId !== pid) return;
       // 화면 높이 기준으로 정규화: 어느 기기에서나 비슷한 손놀림
-      const s = 1.15 / window.innerHeight;
+      const s = T.dragSensitivity / window.innerHeight;
       this.wok.nudge((e.clientX - lastX) * s, (e.clientY - lastY) * s);
       lastX = e.clientX;
       lastY = e.clientY;
@@ -123,7 +123,7 @@ class Game {
     cv.addEventListener('pointerup', up);
     cv.addEventListener('pointercancel', up);
     window.addEventListener('keydown', (e) => {
-      if (e.code === 'Space' && this.state === 'playing') {
+      if (e.code === 'Space' && this.state === 'playing' && !isTyping(e.target)) {
         e.preventDefault();
         this.serve();
       }
@@ -175,7 +175,7 @@ class Game {
 
   startDay() {
     this.state = 'playing';
-    this.timeLeft = DAY_LENGTH;
+    this.timeLeft = T.dayLength;
     this.dayMoney = 0;
     this.served = 0;
     this.lost = 0;
@@ -197,7 +197,7 @@ class Game {
   private spawnCustomer() {
     const pool = RECIPES.filter((r) => r.fromDay <= this.day);
     const recipe = pool[Math.floor(Math.random() * pool.length)];
-    const patience = Math.max(50, 95 - this.day * 5) + recipe.ings.length * 3;
+    const patience = Math.max(T.patienceMin, T.patienceBase - this.day * T.patiencePerDay) + recipe.ings.length * T.patiencePerIng;
     this.customer = new Customer(this.world.scene, recipe, patience);
     toonify(this.customer.group);
     this.sfx.play('bell', 0.5);
@@ -207,7 +207,8 @@ class Game {
     if (this.state !== 'playing' || this.added.has(id)) return;
     const def = INGREDIENTS[ING_INDEX[id]];
     const c = this.tmp.copy(this.wok.base).add(this.wok.off);
-    for (let i = 0; i < def.count; i++) {
+    const count = Math.max(1, Math.round(def.count * T.ingredientAmount));
+    for (let i = 0; i < count; i++) {
       const a = Math.random() * Math.PI * 2;
       const r = Math.sqrt(Math.random()) * 0.1;
       const y = c.y + 0.22 + Math.random() * 0.3;
@@ -233,23 +234,23 @@ class Game {
     const extra = [...this.added].filter((i) => !recipe.ings.includes(i)).length;
     const amount = this.dishTotal ? s.live / this.dishTotal : 0;
 
-    const ingScore = Math.max(0, 1 - 0.35 * missing - 0.2 * extra);
-    const amountScore = 0.2 + 0.8 * clamp(amount / 0.92, 0, 1);
+    const ingScore = Math.max(0, 1 - T.missingPenalty * missing - T.extraPenalty * extra);
+    const amountScore = 0.2 + 0.8 * clamp(amount / T.amountFull, 0, 1);
     let cookScore = 1;
-    if (s.avgCook < COOK_MIN) cookScore = (s.avgCook / COOK_MIN) ** 2;
-    else if (s.avgCook > COOK_MAX) cookScore = Math.max(0, 1 - (s.avgCook - COOK_MAX) / 0.5);
-    const evenScore = clamp(1 - (s.sdCook - 0.2) / 0.5, 0.5, 1);
-    const burnScore = clamp(1 - s.burntFrac * 2.5, 0, 1);
+    if (s.avgCook < T.cookMin) cookScore = (s.avgCook / T.cookMin) ** 2;
+    else if (s.avgCook > T.cookMax) cookScore = Math.max(0, 1 - (s.avgCook - T.cookMax) / T.overcookRange);
+    const evenScore = clamp(1 - (s.sdCook - T.evenTolerance) / 0.5, 0.5, 1);
+    const burnScore = clamp(1 - s.burntFrac * T.burnPenalty, 0, 1);
     const base = ingScore * amountScore * cookScore * evenScore * burnScore;
     // 웍질 보너스: 재료가 높이 떠오를수록 가산점 (기본 점수에 비례해서 붙는다)
     const toss = this.tossFrac();
-    const quality = Math.min(1, base * (1 + TOSS_QUALITY * toss));
+    const quality = Math.min(1, base * (1 + T.tossQuality * toss));
 
     // 가장 문제가 되는 항목으로 손님 반응을 정한다
     const issues: [number, string][] = [
       [ingScore, missing ? '재료가 빠졌잖아요…' : '이건 주문한 게 아닌데요?'],
       [amountScore, '양이 왜 이렇게 적어요?'],
-      [cookScore, s.avgCook < COOK_MIN ? '덜 익었어요…' : '너무 볶았어요…'],
+      [cookScore, s.avgCook < T.cookMin ? '덜 익었어요…' : '너무 볶았어요…'],
       [evenScore, '익은 게 들쭉날쭉해요.'],
       [burnScore, '탔잖아요!'],
     ];
@@ -261,16 +262,16 @@ class Game {
     else comment = issues[0][1];
 
     const stars = clamp(Math.round(1 + 4 * quality), 1, 5);
-    const pay = quality < 0.25 ? 0 : Math.round((recipe.price * (0.4 + 0.6 * quality)) / 100) * 100;
-    const tip = quality >= 0.8 ? Math.round((recipe.price * 0.25 * patienceFrac) / 100) * 100 : 0;
-    const tossPay = pay > 0 ? Math.round((recipe.price * TOSS_PAY * toss) / 100) * 100 : 0;
+    const pay = quality < T.refundBelow ? 0 : Math.round((recipe.price * (0.4 + 0.6 * quality)) / 100) * 100;
+    const tip = quality >= T.tipAbove ? Math.round((recipe.price * T.tipRate * patienceFrac) / 100) * 100 : 0;
+    const tossPay = pay > 0 ? Math.round((recipe.price * T.tossPay * toss) / 100) * 100 : 0;
     return { quality, stars, pay, tip, toss, tossPay, comment };
   }
 
   /** 웍질 보너스 (1 = 100%, 상한 없음): 조각당 누적 떠오른 높이 기준 */
   private tossFrac() {
     const n = Math.max(1, this.dishTotal);
-    return this.particles.tossSum / n / TOSS_FULL;
+    return this.particles.tossSum / n / T.tossFull;
   }
 
   serve() {
@@ -303,7 +304,7 @@ class Game {
     c.react(v.comment);
     this.leaving.push(c);
     this.customer = null;
-    this.nextCustomerIn = 2.5 + Math.random() * 2;
+    this.nextCustomerIn = T.customerGapMin + Math.random() * T.customerGapRand;
 
     const starStr = '★'.repeat(v.stars) + '☆'.repeat(5 - v.stars);
     if (v.pay > 0) {
@@ -350,9 +351,24 @@ class Game {
     $('dayend').classList.remove('hidden');
   }
 
+  private debugInfo() {
+    const s = this.stats;
+    const n = Math.max(1, this.dishTotal);
+    const f = (v: number, d = 2) => v.toFixed(d);
+    return [
+      `재료 조각  ${s.live} / ${this.dishTotal}`,
+      `평균 익힘  ${f(s.avgCook)}  (편차 ${f(s.sdCook)})`,
+      `탄 비율    ${f(s.burntFrac * 100, 0)}%`,
+      `웍질 누적  조각당 ${f((this.particles.tossSum / n) * 100, 1)}cm  → ${f(this.tossFrac() * 100, 0)}%`,
+      `지금 공중  ${this.particles.airborne}조각, 최고 ${f(this.particles.airLift * 100, 1)}cm`,
+      `웍 속도    ${f(this.wok.speed)} m/s`,
+      `남은 시간  ${f(this.timeLeft, 0)}초`,
+    ].join('\n');
+  }
+
   private popToss(text: string, cm: number) {
     const el = document.createElement('div');
-    el.className = `tosspop${cm >= 20 ? ' big' : cm >= 14 ? ' mid' : ''}`;
+    el.className = `tosspop${cm >= T.tossBigCm ? ' big' : cm >= T.tossBigCm * 0.7 ? ' mid' : ''}`;
     el.textContent = text;
     $('tosspops').appendChild(el);
     setTimeout(() => el.remove(), 1100);
@@ -425,11 +441,11 @@ class Game {
     this.tossPopupCd -= dt;
     const peak = this.particles.tossPeak;
     if (peak > 0 && this.tossPopupCd <= 0 && this.state === 'playing') {
-      if (peak >= 0.08) {
+      if (peak >= T.tossPopupMin) {
         const cm = Math.round(peak * 100);
-        this.popToss(cm >= 20 ? `🔥🔥 ${cm}cm!!` : cm >= 14 ? `🔥 ${cm}cm!` : `${cm}cm`, cm);
-        if (cm >= 20) {
-          this.shake = Math.max(this.shake, Math.min(0.012, 0.004 + (cm - 20) * 0.0004));
+        this.popToss(cm >= T.tossBigCm ? `🔥🔥 ${cm}cm!!` : cm >= T.tossBigCm * 0.7 ? `🔥 ${cm}cm!` : `${cm}cm`, cm);
+        if (cm >= T.tossBigCm) {
+          this.shake = Math.max(this.shake, Math.min(0.012, 0.004 + (cm - T.tossBigCm) * 0.0004) * T.shakeAmount);
           const fl = $('flash');
           fl.classList.remove('on');
           void fl.offsetWidth;
@@ -461,11 +477,11 @@ class Game {
     const wc = this.tmp.copy(this.wok.base).add(this.wok.off);
     const lift = this.particles.airLift;
     // 재료 몇 조각이 5cm 넘게 떠야 불길이 붙는다 (쏟아 넣을 때 튀는 정도는 무시)
-    const hot = s.live > 0 && this.particles.airborne >= 3 ? clamp((lift - 0.05) / 0.15, 0, 1.5) : 0;
+    const hot = s.live > 0 && this.particles.airborne >= 3 ? clamp((lift - T.flameMinLift) / 0.15, 0, 1.5) : 0;
     this.flareCd -= dt;
     if (hot > 0 && this.flareCd <= 0) {
       this.fire.flare(wc, this.wok.rimR, hot);
-      this.fire.sparks(wc, Math.round(hot * 6 + Math.min(10, this.particles.airborne * 0.15)));
+      this.fire.sparks(wc, Math.round((hot * 6 + Math.min(10, this.particles.airborne * 0.15)) * T.sparkAmount));
       this.flareCd = 0.07;
     }
     this.fire.update(dt);
@@ -527,12 +543,15 @@ class Game {
 
     // 익힘 게이지
     const has = s.live > 0;
+    const zone = $('cook-zone');
+    zone.style.left = `${clamp(T.cookMin / GAUGE_MAX, 0, 1) * 100}%`;
+    zone.style.width = `${clamp((T.cookMax - T.cookMin) / GAUGE_MAX, 0, 1) * 100}%`;
     $('cook-fill').style.width = `${has ? clamp(s.avgCook / GAUGE_MAX, 0, 1) * 100 : 0}%`;
     let label = '-';
     if (has) {
       if (s.avgCook < 0.3) label = '날것';
-      else if (s.avgCook < COOK_MIN) label = '덜 익음';
-      else if (s.avgCook <= COOK_MAX) label = '딱 좋음!';
+      else if (s.avgCook < T.cookMin) label = '덜 익음';
+      else if (s.avgCook <= T.cookMax) label = '딱 좋음!';
       else label = '과하게 익음';
     }
     $('cook-text').textContent = label;

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { toonify } from './look';
+import { T } from './tuning';
 
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 
@@ -20,11 +21,6 @@ export class Wok {
   roll = 0;
   grabbed = false;
 
-  tiltGain = 0.13;
-  tiltMax = 0.4;
-  readonly maxX = 0.2;
-  readonly minZ = -0.14;
-  readonly maxZ = 0.2;
 
   readonly matrix = new THREE.Matrix4();
   readonly prevMatrix = new THREE.Matrix4();
@@ -49,8 +45,8 @@ export class Wok {
 
   /** 포인터 이동량(m)만큼 목표 위치를 옮긴다 */
   nudge(dx: number, dz: number) {
-    this.target.x = clamp(this.target.x + dx, -this.maxX, this.maxX);
-    this.target.z = clamp(this.target.z + dz, this.minZ, this.maxZ);
+    this.target.x = clamp(this.target.x + dx, -T.wokRangeX, T.wokRangeX);
+    this.target.z = clamp(this.target.z + dz, -T.wokRangeBack, T.wokRangeFront);
   }
 
   release() {
@@ -60,21 +56,21 @@ export class Wok {
 
   step(h: number) {
     this.prevMatrix.copy(this.matrix);
-    const w = this.grabbed ? 38 : 15;
+    const w = this.grabbed ? T.wokStiffness : T.wokReturnStiffness;
     const o = this.off;
     const v = this.vel;
     v.x += (w * w * (this.target.x - o.x) - 2 * w * v.x) * h;
     v.z += (w * w * (this.target.z - o.z) - 2 * w * v.z) * h;
     const sp = this.speed;
     // 빠르게 움직일수록 살짝 들어올린다
-    const ty = this.grabbed ? Math.min(0.06, 0.012 + sp * 0.02) : 0;
+    const ty = this.grabbed ? Math.min(T.wokLiftMax, T.wokLiftBase + sp * T.wokLiftPerSpeed) : 0;
     const wy = 14;
     v.y += (wy * wy * (ty - o.y) - 2 * wy * v.y) * h;
     o.addScaledVector(v, h);
 
     // 진행 방향 반대쪽 림이 들리도록 기울인다 → 재료를 퍼 올려 뒤집는 "웍질"
-    const pt = clamp(v.z * this.tiltGain, -this.tiltMax, this.tiltMax);
-    const rt = clamp(-v.x * this.tiltGain, -this.tiltMax, this.tiltMax);
+    const pt = clamp(v.z * T.wokTiltGain, -T.wokTiltMax, T.wokTiltMax);
+    const rt = clamp(-v.x * T.wokTiltGain, -T.wokTiltMax, T.wokTiltMax);
     const k = Math.min(1, 22 * h);
     this.pitch += (pt - this.pitch) * k;
     this.roll += (rt - this.roll) * k;
