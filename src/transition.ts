@@ -4,18 +4,22 @@
  * 제목·로딩 바·재료 띠가 움직이다가 → 패널이 반대쪽으로 빠지며 새 화면이 드러난다.
  */
 import { TAG_LABEL, randomTip } from './tips';
+import { svgIcon, type UiIcon } from './icons';
 
 export type WipeKind = 'research' | 'selling' | 'result' | 'lobby';
 
 export interface WipeInfo {
   kind: WipeKind;
-  icon: string;
+  /** 상황 아이콘 이름 (icons.ts 의 u-*) */
+  icon: UiIcon;
   kicker: string;
   title: string;
   sub?: string;
 }
 
-const TICKER = '🍚 🌿 🥚 🌶️ 🍖 🧅 🥕 🍤 🥓 🧀 🔥 ';
+const TICKER = ['ic-rice', 'ic-scallion', 'ic-egg', 'ic-kimchi', 'ic-ham', 'ic-onion', 'ic-carrot', 'ic-shrimp', 'ic-bacon', 'ic-cheese', 'u-bonus']
+  .map((id) => svgIcon(id))
+  .join('');
 
 export class Wipe {
   busy = false;
@@ -39,8 +43,8 @@ export class Wipe {
         <div class="wipe-bar"><i></i></div>
         <div class="wipe-tip"></div>
       </div>`;
-    const line = TICKER.repeat(6);
-    for (const s of this.el.querySelectorAll('.wipe-ticker span')) s.textContent = line;
+    const line = TICKER.repeat(4);
+    for (const s of this.el.querySelectorAll('.wipe-ticker span')) s.innerHTML = line;
     document.body.appendChild(this.el);
   }
 
@@ -55,7 +59,7 @@ export class Wipe {
     const HOLD = opts.hold ?? (this.reduced ? 500 : 950);
     const OUT = this.reduced ? 200 : 620;
     const el = this.el;
-    el.querySelector('.wipe-icon')!.textContent = info.icon;
+    el.querySelector('.wipe-icon')!.innerHTML = svgIcon(`u-${info.icon}`);
     el.querySelector('.wipe-kicker')!.textContent = info.kicker;
     el.querySelector('.wipe-title')!.textContent = info.title;
     el.querySelector('.wipe-sub')!.textContent = info.sub ?? '';

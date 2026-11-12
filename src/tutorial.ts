@@ -22,6 +22,7 @@ export type TutTarget = 'oil' | 'wok' | 'taste' | 'trash' | `ing:${IngId}`;
 export interface TutView {
   index: number;
   total: number;
+  /** 아이콘 id (icons.ts 의 ic-* / u-*) */
   icon: string;
   title: string;
   text: string;
@@ -46,14 +47,14 @@ const RECIPE: IngId[] = ['scallion', 'egg', 'rice'];
 
 const STEPS: Step[] = [
   {
-    icon: '🧴',
+    icon: 'u-oil',
     title: '기름 두르기',
     text: '오른쪽 기름통을 꾹 누른 채 웍 위로 끌고 가서 흔드세요. 기름 막대가 초록 구간에 들어오면 OK!',
     target: 'oil',
     done: (s) => s.oilMl >= s.oilIdeal * s.oilMin,
   },
   {
-    icon: '🌿',
+    icon: 'ic-scallion',
     title: '대파 넣기',
     text: '아래 대파 버튼을 1번 누르세요. 대파를 먼저 볶아 파기름을 내요.',
     target: 'ing:scallion',
@@ -61,14 +62,14 @@ const STEPS: Step[] = [
     done: (s) => (s.counts.get('scallion') ?? 0) >= 1,
   },
   {
-    icon: '🍳',
+    icon: 'u-stir',
     title: '대파 볶기',
-    text: '웍을 꾹 누른 채 앞뒤로 흔들어 볶으세요. 오른쪽 🌿 게이지가 조금 찰 때까지!',
+    text: '웍을 꾹 누른 채 앞뒤로 흔들어 볶으세요. 오른쪽 대파 게이지가 조금 찰 때까지!',
     target: 'wok',
     done: (s) => s.cook('scallion').avg >= 0.3,
   },
   {
-    icon: '🥚',
+    icon: 'ic-egg',
     title: '계란 넣기',
     text: '계란 버튼을 2번 누르세요. 같은 재료를 2번 넣으면 "기본" 양이에요.',
     target: 'ing:egg',
@@ -76,14 +77,14 @@ const STEPS: Step[] = [
     done: (s) => (s.counts.get('egg') ?? 0) >= 2,
   },
   {
-    icon: '🍳',
+    icon: 'u-stir',
     title: '계란 익히기',
-    text: '계란이 살짝 익을 때까지 계속 볶으세요. 🥚 게이지를 보세요.',
+    text: '계란이 살짝 익을 때까지 계속 볶으세요. 오른쪽 계란 게이지를 보세요.',
     target: 'wok',
     done: (s) => s.cook('egg').avg >= 0.2,
   },
   {
-    icon: '🍚',
+    icon: 'ic-rice',
     title: '밥 넣기',
     text: '밥 버튼을 2번 누르세요. 밥은 빨리 익어서 나중에 넣어요.',
     target: 'ing:rice',
@@ -91,7 +92,7 @@ const STEPS: Step[] = [
     done: (s) => (s.counts.get('rice') ?? 0) >= 2,
   },
   {
-    icon: '🔥',
+    icon: 'u-blaze',
     title: '다 같이 볶기',
     text: '모든 재료 게이지가 초록 구간에 들어올 때까지 웍질하세요. 바닥에 닿아야 익으니 골고루 뒤집어요!',
     target: 'wok',
@@ -102,7 +103,7 @@ const STEPS: Step[] = [
       }),
   },
   {
-    icon: '👅',
+    icon: 'u-taste',
     title: '맛보기',
     text: '지금이에요! 맛보기 버튼(또는 스페이스 키)을 누르세요.',
     target: 'taste',
@@ -130,18 +131,18 @@ export function tutorialView(s: TutSnapshot): TutView {
   const early = ids.filter((id) => laterIngs.includes(id) && !STEPS.slice(0, index + 1).some((x) => x.ing === id));
 
   if (over.length) {
-    view.warn = '너무 익었어요! 🗑️ 버리기를 누르고 기름부터 다시 해 봐요.';
+    view.warn = '너무 익었어요! 버리기를 누르고 기름부터 다시 해 봐요.';
     view.warnTarget = 'trash';
   } else if (extra.length) {
-    view.warn = '안내에 없는 재료가 들어갔어요. 🗑️ 버리고 다시 해 봐요.';
+    view.warn = '안내에 없는 재료가 들어갔어요. 버리고 다시 해 봐요.';
     view.warnTarget = 'trash';
   } else if (s.oilMl > s.oilIdeal * s.oilMax) {
-    view.warn = '기름이 너무 많아요. 🗑️ 버리고 다시 둘러요.';
+    view.warn = '기름이 너무 많아요. 버리고 다시 둘러요.';
     view.warnTarget = 'trash';
   } else if (index === 0 && ids.length) {
     view.warn = '재료보다 기름이 먼저예요! 기름이 없으면 재료가 눌어붙어요.';
   } else if (early.length) {
-    view.warn = '순서가 바뀌었어요. 늦게 익는 재료부터 넣어야 해요. 🗑️ 버리고 다시 해 볼까요?';
+    view.warn = '순서가 바뀌었어요. 늦게 익는 재료부터 넣어야 해요. 버리고 다시 해 볼까요?';
     view.warnTarget = 'trash';
   }
   return view;

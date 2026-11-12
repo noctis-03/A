@@ -23,9 +23,11 @@ import { DebugPanel, isTyping } from './debug';
 import { OilBottle } from './oil';
 import { Wipe, type WipeInfo } from './transition';
 import { tutorialView, type TutTarget } from './tutorial';
+import { installIcons, svgIcon, type UiIcon } from './icons';
 
 // 디버그 패널에서 바꿔 둔 수치를 먼저 불러온다
 loadTuning();
+installIcons();
 
 const $ = <E extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as E;
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
@@ -81,13 +83,9 @@ function writeSave(s: Save | null) {
 }
 
 /** 재료 이모지 + 이름 */
-const ingLabel = (id: IngId) => `${ingDef(id).emoji} ${ingDef(id).name}`;
-const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
-/** 재료 토큰: 재료 색 동그라미 + 그림 */
-const tok = (id: IngId, cls = '') => {
-  const d = ingDef(id);
-  return `<span class="tok ${cls}" style="--c:${hex(d.raw)}">${cls.includes('sm') ? '' : d.emoji}</span>`;
-};
+const ingLabel = (id: IngId) => ingDef(id).name;
+/** 재료 아이콘 (스티커형 SVG) */
+const tok = (id: IngId, cls = '') => `<span class="tok ${cls}">${svgIcon(`ic-${id}`)}</span>`;
 const ICON = (name: string, cls = 'ic') => `<svg class="${cls}"><use href="#i-${name}" /></svg>`;
 
 class Game {
@@ -163,7 +161,7 @@ class Game {
     this.showLobby();
     this.renderer.setAnimationLoop(() => this.frame());
     // 첫 로딩: 덮인 상태에서 시작해 로비가 드러난다
-    this.wipe.run({ kind: 'lobby', icon: '🔥', kicker: 'WOK WOK!', title: '웍웍!', sub: '불맛 볶음밥 푸드트럭' }, () => {}, { covered: true, hold: 1100 });
+    this.wipe.run({ kind: 'lobby', icon: 'logo', kicker: 'WOK WOK!', title: '웍웍!', sub: '불맛 볶음밥 푸드트럭' }, () => {}, { covered: true, hold: 1100 });
   }
 
   private get active() {
@@ -301,7 +299,7 @@ class Game {
       });
     });
     $('home-btn').addEventListener('click', () =>
-      this.go({ kind: 'lobby', icon: '🏠', kicker: 'LOBBY', title: '로비', sub: '진행 상황은 저장돼요' }, () => this.showLobby()),
+      this.go({ kind: 'lobby', icon: 'home', kicker: 'LOBBY', title: '로비', sub: '진행 상황은 저장돼요' }, () => this.showLobby()),
     );
     const mute = () => {
       const muted = this.sfx.toggleMute();
@@ -362,7 +360,7 @@ class Game {
   private researchInfo(round: number): WipeInfo {
     return {
       kind: 'research',
-      icon: '🧪',
+      icon: 'research',
       kicker: `ROUND ${round}`,
       title: '레시피 연구',
       sub: round === 1 ? '집 주방 · 첫 레시피를 찾아요' : `집 주방 · ${round}회차`,
@@ -370,7 +368,7 @@ class Game {
   }
 
   private sellInfo(round = this.round): WipeInfo {
-    return { kind: 'selling', icon: '🚚', kicker: `DAY ${round}`, title: '장사 시작', sub: '푸드트럭 오픈!' };
+    return { kind: 'selling', icon: 'truck', kicker: `DAY ${round}`, title: '장사 시작', sub: '푸드트럭 오픈!' };
   }
 
   private showLobby() {
@@ -536,7 +534,7 @@ class Game {
     const set = new Set(this.counts.keys());
     const hit = matchRecipe(set);
     if (hit && this.found.has(hit.id)) {
-      this.showTaste('😋', '이미 아는 맛이에요', `<b>${esc(hit.name)}</b>이에요.`);
+      this.showTaste('known', '이미 아는 맛이에요', `<b>${esc(hit.name)}</b>이에요.`);
       return;
     }
     if (hit) {
@@ -544,9 +542,9 @@ class Game {
       this.save();
       this.sfx.play('ding', 0.7);
       this.showTaste(
-        '🎉',
+        'found',
         `새 레시피 발견! ${hit.name}`,
-        `${hit.id === TUTORIAL_RECIPE && this.round === 1 ? '<p><b>튜토리얼 완료!</b> 이제 🚚 장사하러 가기를 눌러 첫 장사를 시작해 봐요.</p>' : ''}
+        `${hit.id === TUTORIAL_RECIPE && this.round === 1 ? '<p><b>튜토리얼 완료!</b> 이제 <b>장사하러 가기</b>를 눌러 첫 장사를 시작해 봐요.</p>' : ''}
          <p>레시피 북에 기록했어요. 장사할 때 손님이 주문해요.</p>
          <div class="steps">${this.stepsHtml(hit)}</div>
          <p class="small">정석 순서와 양이에요. 순서와 양이 맞을수록 장사 때 별점이 올라가요.</p>`,
@@ -556,7 +554,7 @@ class Game {
     }
     this.save();
     this.sfx.play('plop', 0.5);
-    this.showTaste('🤔', '음…', this.feedback(set));
+    this.showTaste('hmm', '음…', this.feedback(set));
   }
 
   /** 아직 못 찾은 레시피 중 가장 가까운 것을 기준으로 반응한다 */
@@ -586,8 +584,8 @@ class Game {
     return `<p>${lines.join('<br>')}</p>`;
   }
 
-  private showTaste(icon: string, title: string, html: string, clear = false) {
-    $('taste-icon').textContent = icon;
+  private showTaste(icon: UiIcon, title: string, html: string, clear = false) {
+    $('taste-icon').innerHTML = svgIcon(`u-${icon}`);
     $('taste-title').textContent = title;
     $('taste-body').innerHTML = html;
     $('taste').classList.remove('hidden');
@@ -775,9 +773,9 @@ class Game {
     ];
     issues.sort((a, b) => a[0] - b[0]);
     let comment: string;
-    if (quality >= 0.9 && toss >= 1) comment = '완벽해요! 불맛 최고 🔥';
-    else if (quality >= 0.9) comment = '완벽해요! 😍';
-    else if (quality >= 0.75) comment = '맛있어요! 😋';
+    if (quality >= 0.9 && toss >= 1) comment = '완벽해요! 불맛 최고!';
+    else if (quality >= 0.9) comment = '완벽해요!';
+    else if (quality >= 0.75) comment = '맛있어요!';
     else comment = issues[0][1];
 
     const stars = clamp(Math.round(1 + 4 * quality), 1, 5);
@@ -834,9 +832,9 @@ class Game {
     const starStr = '★'.repeat(v.stars) + '☆'.repeat(5 - v.stars);
     if (v.pay > 0) {
       const extras = [];
-      if (v.tossPay) extras.push(`🔥 웍질 보너스 +${won(v.tossPay)}원`);
+      if (v.tossPay) extras.push(`웍질 보너스 +${won(v.tossPay)}원`);
       if (v.tip) extras.push(`팁 +${won(v.tip)}원`);
-      this.toast(`${starStr}  +${won(v.pay)}원`, extras.join(' · '), v.stars >= 4 ? 'good' : '');
+      this.toast(`${starStr}  +${won(v.pay)}원`, extras.join(' · '), v.stars >= 4 ? 'good' : '', v.tossPay ? 'bonus' : v.tip ? 'tip' : undefined);
       this.sfx.play(v.stars >= 4 ? 'ding' : 'coin', 0.6);
     } else {
       this.toast(`${starStr}  환불…`, '손님이 돈을 내지 않았어요', 'bad');
@@ -926,15 +924,20 @@ class Game {
   private popToss(text: string, cm: number) {
     const el = document.createElement('div');
     el.className = `tosspop${cm >= T.tossBigCm ? ' big' : cm >= T.tossBigCm * 0.7 ? ' mid' : ''}`;
-    el.textContent = text;
+    el.innerHTML = cm >= T.tossBigCm * 0.7 ? svgIcon('u-bonus') : '';
+    el.append(text);
     $('tosspops').appendChild(el);
     setTimeout(() => el.remove(), 1100);
   }
 
-  private toast(title: string, sub: string, cls: string) {
+  private toast(title: string, sub: string, cls: string, icon?: UiIcon) {
     const el = document.createElement('div');
     el.className = `toast ${cls}`;
-    el.textContent = title;
+    const head = document.createElement('div');
+    head.className = 'toast-head';
+    if (icon) head.innerHTML = svgIcon(`u-${icon}`);
+    head.append(title);
+    el.appendChild(head);
     if (sub) {
       const s = document.createElement('small');
       s.textContent = sub;
@@ -968,7 +971,7 @@ class Game {
       } else if (this.leaving.length === 0) {
         // 마감: 전환 로딩창 뒤에서 결과 화면을 띄운다
         this.state = 'result';
-        this.go({ kind: 'result', icon: '🌙', kicker: `DAY ${this.round}`, title: '장사 마감', sub: '오늘의 결과를 확인해요' }, () =>
+        this.go({ kind: 'result', icon: 'close', kicker: `DAY ${this.round}`, title: '장사 마감', sub: '오늘의 결과를 확인해요' }, () =>
           this.endDay(),
         );
       }
@@ -1004,7 +1007,7 @@ class Game {
     if (peak > 0 && this.tossPopupCd <= 0 && this.active) {
       if (peak >= T.tossPopupMin) {
         const cm = Math.round(peak * 100);
-        this.popToss(cm >= T.tossBigCm ? `🔥🔥 ${cm}cm!!` : cm >= T.tossBigCm * 0.7 ? `🔥 ${cm}cm!` : `${cm}cm`, cm);
+        this.popToss(cm >= T.tossBigCm ? `${cm}cm!!` : cm >= T.tossBigCm * 0.7 ? `${cm}cm!` : `${cm}cm`, cm);
         if (cm >= T.tossBigCm) {
           this.shake = Math.max(this.shake, Math.min(0.012, 0.004 + (cm - T.tossBigCm) * 0.0004) * T.shakeAmount);
           const fl = $('flash');
@@ -1102,7 +1105,7 @@ class Game {
         'guide-dots',
         Array.from({ length: v.total }, (_, i) => `<i class="${i < v.index ? 'done' : i === v.index ? 'now' : ''}"></i>`).join(''),
       );
-      $('guide-icon').textContent = v.icon;
+      $('guide-icon').innerHTML = svgIcon(v.icon);
       $('guide-name').textContent = v.title;
       $('guide-text').textContent = v.text;
       const warn = $('guide-warn');

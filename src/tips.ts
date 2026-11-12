@@ -12,12 +12,12 @@ export interface Tip {
 }
 
 export const TAG_LABEL: Record<TipTag, string> = {
-  oil: '🧴 기름',
-  cook: '🔥 순서와 익힘',
-  research: '🧪 레시피 연구',
-  sell: '🚚 장사',
-  wok: '🍳 웍질',
-  control: '⌨️ 조작',
+  oil: '기름',
+  cook: '순서와 익힘',
+  research: '레시피 연구',
+  sell: '장사',
+  wok: '웍질',
+  control: '조작',
 };
 
 export const TIPS: Tip[] = [
@@ -63,7 +63,7 @@ export const TIPS: Tip[] = [
   { tag: 'wok', text: '재료가 공중에 떠 있는 동안에는 덜 익어요. 웍질과 익히기 사이에서 균형을 잡으세요.' },
   // ⌨️ 조작
   { tag: 'control', text: '스페이스 키로 연구 때는 맛보기, 장사 때는 내놓기를 할 수 있어요.' },
-  { tag: 'control', text: '🏠 버튼으로 언제든 로비로 나갈 수 있어요. 장사 도중에 나가면 그날 장사는 처음부터 다시 해요.' },
+  { tag: 'control', text: '홈 버튼으로 언제든 로비로 나갈 수 있어요. 장사 도중에 나가면 그날 장사는 처음부터 다시 해요.' },
 ];
 
 /** 화면 종류별로 보여 줄 팁 분류 */
