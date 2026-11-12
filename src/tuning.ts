@@ -19,6 +19,24 @@ export const DEFAULTS = {
   burnStart: 1.7,
   burnRate: 0.3,
 
+  // ── 재료별 익는 속도 (밥 = 1) ── 느린 재료를 먼저 넣어야 다 같이 맞게 익는다
+  speedRice: 1,
+  speedScallion: 2,
+  speedEgg: 0.8,
+  speedKimchi: 1.2,
+  speedHam: 0.9,
+  speedOnion: 0.7,
+  speedCarrot: 0.6,
+  speedShrimp: 1.1,
+  speedBacon: 0.7,
+  speedCheese: 2.5,
+
+  // ── 레시피 연구 ──
+  tastesPerRound: 2,
+  tasteBurntLimit: 0.15,
+  amountPenalty: 0.12,
+  orderPenalty: 0.1,
+
   // ── 웍 조작 ──
   dragSensitivity: 1.15,
   wokStiffness: 38,
@@ -109,6 +127,30 @@ export const GROUPS: { name: string; items: [TuneKey, Meta][] }[] = [
     ],
   },
   {
+    name: '재료별 익는 속도',
+    items: [
+      ['speedRice', { label: '🍚 밥', min: 0.1, max: 4, step: 0.05 }],
+      ['speedScallion', { label: '🌿 대파', min: 0.1, max: 4, step: 0.05 }],
+      ['speedEgg', { label: '🥚 계란', min: 0.1, max: 4, step: 0.05 }],
+      ['speedKimchi', { label: '🌶️ 김치', min: 0.1, max: 4, step: 0.05 }],
+      ['speedHam', { label: '🍖 햄', min: 0.1, max: 4, step: 0.05 }],
+      ['speedOnion', { label: '🧅 양파', min: 0.1, max: 4, step: 0.05 }],
+      ['speedCarrot', { label: '🥕 당근', min: 0.1, max: 4, step: 0.05 }],
+      ['speedShrimp', { label: '🍤 새우', min: 0.1, max: 4, step: 0.05 }],
+      ['speedBacon', { label: '🥓 베이컨', min: 0.1, max: 4, step: 0.05 }],
+      ['speedCheese', { label: '🧀 치즈', min: 0.1, max: 4, step: 0.05 }],
+    ],
+  },
+  {
+    name: '레시피 연구',
+    items: [
+      ['tastesPerRound', { label: '회차당 맛보기 횟수', min: 1, max: 10, step: 1, int: true }],
+      ['tasteBurntLimit', { label: '맛보기 가능한 탄 비율 최대', min: 0, max: 1, step: 0.01 }],
+      ['amountPenalty', { label: '양(적게/기본/많이) 1단계 차이 감점', min: 0, max: 0.5, step: 0.01 }],
+      ['orderPenalty', { label: '넣는 순서 1번 어긋남 감점', min: 0, max: 0.5, step: 0.01 }],
+    ],
+  },
+  {
     name: '웍 조작',
     items: [
       ['dragSensitivity', { label: '드래그 감도', min: 0.3, max: 3, step: 0.05 }],
@@ -161,7 +203,7 @@ export const GROUPS: { name: string; items: [TuneKey, Meta][] }[] = [
       ['patiencePerIng', { label: '재료당 추가 인내심 (초)', min: 0, max: 20, step: 0.5 }],
       ['customerGapMin', { label: '다음 손님까지 최소 (초)', min: 0, max: 20, step: 0.5 }],
       ['customerGapRand', { label: '다음 손님 랜덤 추가 (초)', min: 0, max: 20, step: 0.5 }],
-      ['ingredientAmount', { label: '재료 양 배율', min: 0.3, max: 2, step: 0.05 }],
+      ['ingredientAmount', { label: '한 줌당 재료 양 배율', min: 0.3, max: 2, step: 0.05 }],
     ],
   },
   {

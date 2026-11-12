@@ -13,57 +13,106 @@
     <div id="hud" class="hidden">
       <div id="top">
         <div class="panel" id="status">
-          <div><b id="day">1일차</b> <span id="clock">⏱ 2:30</span></div>
+          <div><b id="day">1일차</b> <span id="clock"></span></div>
           <div>💰 <b id="money">0</b>원 · ⭐ <b id="rating">-</b></div>
+        </div>
+        <div class="panel hidden" id="lab">
+          <div class="lab-row"><span>맛보기</span><span id="taste-dots"></span></div>
+          <button type="button" id="book-btn">📖 레시피 북 <b id="found-count">0 / 13</b></button>
         </div>
         <div class="panel hidden" id="ticket">
           <div id="ticket-name"></div>
           <div id="ticket-ings"></div>
           <div class="bar"><div id="patience"></div></div>
         </div>
-        <button class="panel icon" id="mute" aria-label="소리 켜기/끄기">🔊</button>
+        <div class="top-btns">
+          <button type="button" class="panel icon" id="home-btn" aria-label="로비로">🏠</button>
+          <button type="button" class="panel icon" id="mute" aria-label="소리 켜기/끄기">🔊</button>
+        </div>
+      </div>
+
+      <div class="panel hidden" id="guide">
+        <div class="guide-title">📝 오늘의 연구 · 파 계란 볶음밥</div>
+        <div class="steps" id="guide-steps"></div>
+        <div class="small">느리게 익는 재료부터 넣어요. 모든 재료가 초록 구간에 오면 <b>맛보기</b>!</div>
       </div>
 
       <div class="panel" id="gauge">
         <div class="glabel">익힘 <span id="cook-text">-</span></div>
-        <div class="bar cook"><div class="zone" id="cook-zone"></div><div id="cook-fill"></div></div>
+        <div id="cook-rows"></div>
         <div class="gsmall"><span>남은 양 <b id="amount">-</b></span><span>탄 재료 <b id="burnt">-</b></span></div>
         <div class="glabel toss">🔥 웍질 보너스 <span id="toss-text">-</span></div>
         <div class="bar toss" id="toss-bar"><div id="toss-fill"></div></div>
       </div>
 
       <div id="bubble" class="hidden"></div>
-      <div id="hint">웍을 누른 채로 끌어서 흔드세요 · 높이 띄울수록 보너스!</div>
+      <div id="hint">웍을 누른 채로 끌어서 흔드세요</div>
       <div id="toasts"></div>
       <div id="tosspops"></div>
 
       <div id="bottom">
         <div id="ings"></div>
         <div id="actions">
-          <button id="trash">🗑️ 버리기</button>
-          <button id="serve">🍽️ 내놓기</button>
+          <button type="button" id="trash">🗑️ 버리기</button>
+          <button type="button" id="taste-btn" class="hot">👅 맛보기</button>
+          <button type="button" id="go-sell">🚚 장사하러 가기</button>
+          <button type="button" id="serve" class="hot">🍽️ 내놓기</button>
         </div>
       </div>
     </div>
 
-    <div class="overlay" id="title">
+    <div class="overlay" id="lobby">
+      <div class="card lobby-card">
+        <div class="logo">🔥</div>
+        <h1>웍 트럭</h1>
+        <p class="sub">집에서 레시피를 연구하고, 푸드트럭에서 팔아요</p>
+        <div class="loop"><span>🧪 레시피 연구</span><span class="arrow">→</span><span>🚚 장사</span><span class="arrow">→</span><span>📊 결과 · 새 재료</span></div>
+        <div class="lobby-btns">
+          <button type="button" id="continue" class="big">이어서 하기</button>
+          <div class="save-info" id="save-info"></div>
+          <button type="button" id="newgame" class="ghost">처음부터</button>
+          <button type="button" id="lobby-book" class="ghost hidden">📖 레시피 북</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="overlay hidden" id="confirm">
       <div class="card">
-        <h1>🔥 웍 트럭</h1>
-        <p class="sub">불맛 볶음밥 푸드트럭 시뮬레이터</p>
-        <ol>
-          <li>손님의 <b>주문서</b>를 보고 재료를 웍에 넣으세요.</li>
-          <li>웍을 <b>누른 채로 끌어서</b> 흔들어 골고루 볶으세요.<br />재료를 <b>높이 띄울수록 웍질 보너스</b>! 단, 웍 밖으로 튀면 양이 줄고, 너무 오래 볶으면 탑니다.</li>
-          <li>익힘 게이지가 초록 구간에 오면 <b>내놓기</b>!</li>
-        </ol>
-        <button id="start">장사 시작</button>
+        <h2>처음부터 시작할까요?</h2>
+        <p>지금까지 찾은 레시피와 돈이 모두 사라져요.</p>
+        <div class="row-btns">
+          <button type="button" id="confirm-no" class="ghost">취소</button>
+          <button type="button" id="confirm-yes">처음부터 시작</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="overlay hidden" id="taste">
+      <div class="card">
+        <div class="logo" id="taste-icon">🤔</div>
+        <h2 id="taste-title"></h2>
+        <div id="taste-body"></div>
+        <button type="button" id="taste-close">확인</button>
+      </div>
+    </div>
+
+    <div class="overlay hidden" id="book">
+      <div class="card book-card">
+        <div class="book-head">
+          <h2>📖 레시피 북</h2>
+          <span id="book-count"></span>
+          <button type="button" id="book-close" class="ghost" aria-label="닫기">✕</button>
+        </div>
+        <div id="book-grid"></div>
       </div>
     </div>
 
     <div class="overlay hidden" id="dayend">
       <div class="card">
-        <h1 id="end-title">1일차 마감</h1>
+        <h1 id="end-title">1일차 장사 마감</h1>
         <div id="end-body"></div>
-        <button id="next">다음 날 장사</button>
+        <div id="end-unlock" class="hidden"></div>
+        <button type="button" id="next">🧪 다음 회차 레시피 연구</button>
       </div>
     </div>
 

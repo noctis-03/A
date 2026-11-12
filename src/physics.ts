@@ -17,6 +17,14 @@ function groundHeight(x: number, z: number) {
   return 0.9;
 }
 
+export interface TypeStat {
+  n: number;
+  avgCook: number;
+  /** 같은 재료끼리 익힘 편차 */
+  sdCook: number;
+  burntFrac: number;
+}
+
 export interface DishStats {
   live: number;
   avgCook: number;
@@ -26,7 +34,7 @@ export interface DishStats {
 }
 
 export class Particles {
-  readonly max = 360;
+  readonly max = 520;
   count = 0;
   px = new Float32Array(this.max);
   py = new Float32Array(this.max);
@@ -50,6 +58,8 @@ export class Particles {
   age = new Float32Array(this.max);
   type = new Uint8Array(this.max);
   state = new Uint8Array(this.max);
+
+  private speed = new Float32Array(INGREDIENTS.length);
 
   /** 이번 스텝에서 새로 흘린 조각 수 (게임 쪽에서 읽고 0으로 리셋) */
   newlySpilled = 0;
@@ -108,6 +118,26 @@ export class Particles {
     this.count = 0;
   }
 
+  /** 재료 종류별 조각 수 · 평균 익힘 · 탄 비율 (웍 안에 있는 조각만) */
+  typeStats(): TypeStat[] {
+    const out: TypeStat[] = INGREDIENTS.map(() => ({ n: 0, avgCook: 0, sdCook: 0, burntFrac: 0 }));
+    for (let i = 0; i < this.count; i++) {
+      if (this.state[i] !== LIVE) continue;
+      const o = out[this.type[i]];
+      o.n++;
+      o.avgCook += this.cook[i];
+      o.sdCook += this.cook[i] * this.cook[i];
+      if (this.burn[i] > 0.5) o.burntFrac++;
+    }
+    for (const o of out) {
+      if (!o.n) continue;
+      o.avgCook /= o.n;
+      o.sdCook = Math.sqrt(Math.max(0, o.sdCook / o.n - o.avgCook * o.avgCook));
+      o.burntFrac /= o.n;
+    }
+    return out;
+  }
+
   stats(): DishStats {
     let n = 0;
     let sum = 0;
@@ -145,6 +175,9 @@ export class Particles {
     const COOK_RATE = T.cookRate;
     const TOSS_MIN = T.tossMin;
     const SPILL_LIFE = T.spillLife;
+    // 재료별 익는 속도
+    const speed = this.speed;
+    for (let t = 0; t < INGREDIENTS.length; t++) speed[t] = T[INGREDIENTS[t].speedKey];
 
     for (let i = 0; i < n; i++) {
       if (state[i] === FREE) continue;
@@ -283,7 +316,7 @@ export class Particles {
 
           // 가열: 바닥 쪽일수록 뜨겁다
           const hot = ly < 0.075 ? 1 : T.cookSideFactor;
-          this.cook[i] += COOK_RATE * hot * heat * h;
+          this.cook[i] += COOK_RATE * speed[this.type[i]] * hot * heat * h;
           // 웍질: 공중에 떴다가 웍 안으로 다시 떨어지면 떠오른 높이만큼 점수
           if (this.air[i] > 0.08) {
             const lift = this.peakY[i] - this.launchY[i];
@@ -297,7 +330,7 @@ export class Particles {
           this.peakY[i] = py[i];
         } else if (inside) {
           // 다른 재료 위에 얹혀 있음 → 천천히 익는다
-          this.cook[i] += COOK_RATE * T.cookPileFactor * heat * h;
+          this.cook[i] += COOK_RATE * speed[this.type[i]] * T.cookPileFactor * heat * h;
         }
         if (this.cook[i] > T.burnStart) this.burn[i] += T.burnRate * h * heat;
       }
@@ -353,6 +386,10 @@ function shapeGeometry(shape: Shape): THREE.BufferGeometry {
       return new THREE.TorusGeometry(0.72, 0.36, 6, 10, Math.PI * 1.35);
     case 'leaf':
       return new THREE.BoxGeometry(2, 0.45, 1.5);
+    case 'petal':
+      return new THREE.TorusGeometry(0.9, 0.24, 5, 10, Math.PI * 0.9).scale(1, 1, 0.8);
+    case 'strip':
+      return new THREE.BoxGeometry(2.4, 0.35, 0.95);
     case 'slab':
       return new THREE.BoxGeometry(1.6, 0.8, 1.6);
   }
@@ -379,7 +416,7 @@ export class ParticleRenderer {
       const mesh = new THREE.InstancedMesh(
         shapeGeometry(def.shape),
         toonMat(0xffffff),
-        def.count * 3,
+        def.count * 8,
       );
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       mesh.setColorAt(0, this.col.set(def.raw));
@@ -390,7 +427,7 @@ export class ParticleRenderer {
       this.cooked.push(new THREE.Color(def.cooked));
       this.used.push(0);
       // 외곽선: 같은 인스턴스 행렬을 공유하는 뒷면 메시
-      const line = new THREE.InstancedMesh(mesh.geometry, outlineMat(0.16, 0x2a160c), def.count * 3);
+      const line = new THREE.InstancedMesh(mesh.geometry, outlineMat(0.16, 0x2a160c), def.count * 8);
       line.instanceMatrix = mesh.instanceMatrix;
       line.count = 0;
       line.frustumCulled = false;
