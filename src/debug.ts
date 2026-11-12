@@ -174,7 +174,7 @@ export class DebugPanel {
   /** 전체 수치를 한 덩어리 텍스트로 */
   private dump() {
     const changed = changedKeys();
-    const lines = ['[웍 트럭 수치]'];
+    const lines = ['[웍웍! 수치]'];
     lines.push(changed.length ? `바뀐 항목: ${changed.map((k) => `${k} ${DEFAULTS[k]} → ${round(T[k])}`).join(', ')}` : '바뀐 항목: 없음');
     const obj: Record<string, number> = {};
     for (const k of Object.keys(DEFAULTS) as TuneKey[]) obj[k] = round(T[k]);

@@ -82,6 +82,13 @@ function writeSave(s: Save | null) {
 
 /** 재료 이모지 + 이름 */
 const ingLabel = (id: IngId) => `${ingDef(id).emoji} ${ingDef(id).name}`;
+const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
+/** 재료 토큰: 재료 색 동그라미 + 그림 */
+const tok = (id: IngId, cls = '') => {
+  const d = ingDef(id);
+  return `<span class="tok ${cls}" style="--c:${hex(d.raw)}">${cls.includes('sm') ? '' : d.emoji}</span>`;
+};
+const ICON = (name: string, cls = 'ic') => `<svg class="${cls}"><use href="#i-${name}" /></svg>`;
 
 class Game {
   state: State = 'lobby';
@@ -93,6 +100,8 @@ class Game {
 
   timeLeft = T.dayLength;
   dayMoney = 0;
+  dayToss = 0;
+  private bookFilter: 'all' | 'found' | 'open' = 'all';
   served = 0;
   lost = 0;
   starsSum = 0;
@@ -154,7 +163,7 @@ class Game {
     this.showLobby();
     this.renderer.setAnimationLoop(() => this.frame());
     // 첫 로딩: 덮인 상태에서 시작해 로비가 드러난다
-    this.wipe.run({ kind: 'lobby', icon: '🔥', kicker: 'WOK TRUCK', title: '웍 트럭', sub: '불맛 볶음밥 푸드트럭' }, () => {}, { covered: true, hold: 1100 });
+    this.wipe.run({ kind: 'lobby', icon: '🔥', kicker: 'WOK WOK!', title: '웍웍!', sub: '불맛 볶음밥 푸드트럭' }, () => {}, { covered: true, hold: 1100 });
   }
 
   private get active() {
@@ -253,7 +262,7 @@ class Game {
     for (const def of INGREDIENTS) {
       const b = document.createElement('button');
       b.type = 'button';
-      b.innerHTML = `<i class="cnt"></i><span>${def.emoji}</span><em>${def.name}</em>`;
+      b.innerHTML = `<span class="cnt"></span>${tok(def.id)}<em>${def.name}</em>`;
       b.addEventListener('click', () => this.addIngredient(def.id));
       wrap.appendChild(b);
       this.ingButtons.set(def.id, b);
@@ -294,9 +303,21 @@ class Game {
     $('home-btn').addEventListener('click', () =>
       this.go({ kind: 'lobby', icon: '🏠', kicker: 'LOBBY', title: '로비', sub: '진행 상황은 저장돼요' }, () => this.showLobby()),
     );
-    $('mute').addEventListener('click', () => {
-      $('mute').textContent = this.sfx.toggleMute() ? '🔇' : '🔊';
+    const mute = () => {
+      const muted = this.sfx.toggleMute();
+      for (const id of ['mute', 'lobby-mute']) $(id).innerHTML = ICON(muted ? 'mute' : 'sound');
+    };
+    $('mute').addEventListener('click', mute);
+    $('lobby-mute').addEventListener('click', () => {
+      this.sfx.init();
+      mute();
     });
+    for (const b of $('book-tabs').querySelectorAll<HTMLButtonElement>('button')) {
+      b.addEventListener('click', () => {
+        this.bookFilter = b.dataset.f as 'all' | 'found' | 'open';
+        this.openBook();
+      });
+    }
   }
 
   private resize() {
@@ -363,10 +384,18 @@ class Game {
     const s = readSave();
     const cont = $<HTMLButtonElement>('continue');
     cont.disabled = !s;
-    $('save-info').textContent = s
-      ? `${s.round}회차 ${s.phase === 'research' ? '레시피 연구' : '장사'} · 레시피 ${s.found.length}/${RECIPES.length} · 💰 ${won(s.money)}원`
-      : '저장된 게임이 없어요';
+    $('save-info').textContent = s ? `${s.round}회차 · ${s.phase === 'research' ? '레시피 연구' : '장사'} 중` : '저장된 게임이 없어요';
     $('lobby-book').classList.toggle('hidden', !s);
+    $('lb-save').classList.toggle('hidden', !s);
+    if (s) {
+      const unlocked = Math.min(INGREDIENTS.length, START_UNLOCKED + s.round - 1);
+      $('lb-best').textContent = s.best ? `하루 최고 ${won(s.best)}원` : '';
+      $('lb-round').textContent = String(s.round);
+      $('lb-recipes').innerHTML = `${s.found.length}<small> / ${RECIPES.length}</small>`;
+      $('lb-money').innerHTML = `${won(s.money)}<small>원</small>`;
+      $('lb-ing-label').textContent = `재료 ${unlocked} / ${INGREDIENTS.length}`;
+      $('lb-ings').innerHTML = INGREDIENTS.map((d, i) => tok(d.id, i < unlocked ? '' : 'off')).join('');
+    }
     if (s) {
       this.found = new Set(s.found);
       this.round = s.round;
@@ -438,6 +467,7 @@ class Game {
     this.world.setPlace('truck');
     this.timeLeft = T.dayLength;
     this.dayMoney = 0;
+    this.dayToss = 0;
     this.served = 0;
     this.lost = 0;
     this.starsSum = 0;
@@ -451,10 +481,7 @@ class Game {
     const research = this.state === 'research';
     $('hud').classList.remove('hidden');
     $('hud').dataset.mode = this.state;
-    $('lab').classList.toggle('hidden', !research);
-    $('taste-btn').classList.toggle('hidden', !research);
-    $('go-sell').classList.toggle('hidden', !research);
-    $('serve').classList.toggle('hidden', research);
+    // 연구/장사 전용 요소는 CSS 가 data-mode 로 보이고 숨긴다
     $('ticket').classList.add('hidden');
     $('hint').textContent = research
       ? '기름통을 꾹 눌러 웍 위로 끌고 가서 흔들면 기름이 나와요 · 재료를 넣고 볶은 뒤 맛보기'
@@ -579,19 +606,43 @@ class Game {
 
   private stepsHtml(r: Recipe) {
     return r.steps
-      .map(([id, n]) => `<span class="step">${ingDef(id).emoji} ${ingDef(id).name} <small>×${n} ${AMOUNT_LABEL[n]}</small></span>`)
+      .map(
+        ([id, n], i) =>
+          `<span class="step"><span class="no">${i + 1}</span>${tok(id, 'sm')}${ingDef(id).name} <small>×${n} ${AMOUNT_LABEL[n]}</small></span>`,
+      )
       .join('<span class="arrow">→</span>');
   }
 
   private openBook() {
-    const grid = $('book-grid');
-    grid.innerHTML = RECIPES.map((r, i) => {
-      if (!this.found.has(r.id)) {
-        return `<div class="rcard locked"><div class="no">${i + 1}</div><div class="q">???</div><div class="small">아직 찾지 못한 레시피</div></div>`;
-      }
-      return `<div class="rcard"><div class="no">${i + 1}</div><div class="rname">${esc(r.name)}</div><div class="price">${won(r.price)}원</div><div class="steps">${this.stepsHtml(r)}</div></div>`;
-    }).join('');
-    $('book-count').textContent = `${this.found.size} / ${RECIPES.length}`;
+    // 지금 열린 재료만으로 찾을 수 있는 (아직 못 찾은) 레시피
+    const canFind = (r: Recipe) => !this.found.has(r.id) && recipeIngs(r).every((id) => this.isUnlocked(id));
+    const list = RECIPES.map((r, i) => ({ r, i })).filter(({ r }) =>
+      this.bookFilter === 'found' ? this.found.has(r.id) : this.bookFilter === 'open' ? canFind(r) : true,
+    );
+    const dots = (n: number) => `<span class="dots3">${[1, 2, 3].map((k) => `<i class="${k <= n ? 'on' : ''}"></i>`).join('')}</span>`;
+    $('book-grid').innerHTML =
+      list
+        .map(({ r, i }) => {
+          const no = String(i + 1).padStart(2, '0');
+          if (!this.found.has(r.id)) {
+            const hint = canFind(r) ? '지금 재료로 찾을 수 있어요' : '아직 없는 재료가 필요해요';
+            return `<div class="rcard locked"><div class="rc-top"><span class="rc-no">No. ${no}</span></div><div class="rc-name">???</div><div class="rc-hint">${hint}</div></div>`;
+          }
+          const steps = r.steps
+            .map(([id, n], k) => `<span class="rc-step"><span class="no">${k + 1}</span>${tok(id, 'sm')}${ingDef(id).name}${dots(n)}</span>`)
+            .join('');
+          return `<div class="rcard"><div class="rc-top"><span class="rc-no">No. ${no}</span><span class="rc-price">${won(r.price)}원</span></div><div class="rc-name">${esc(r.name)}</div><div class="rc-steps">${steps}</div></div>`;
+        })
+        .join('') || '<p class="small">해당하는 레시피가 없어요.</p>';
+    const openN = RECIPES.filter(canFind).length;
+    const labels = { all: `전체 ${RECIPES.length}`, found: `찾은 것 ${this.found.size}`, open: `지금 찾을 수 있는 것 ${openN}` };
+    for (const b of $('book-tabs').querySelectorAll<HTMLButtonElement>('button')) {
+      const f = b.dataset.f as keyof typeof labels;
+      b.textContent = labels[f];
+      b.classList.toggle('on', f === this.bookFilter);
+    }
+    $('book-count').innerHTML = `${this.found.size}<small> / ${RECIPES.length}</small>`;
+    $('book-bar').style.width = `${(this.found.size / RECIPES.length) * 100}%`;
     $('book').classList.remove('hidden');
   }
 
@@ -754,6 +805,7 @@ class Game {
     const earned = v.pay + v.tip + v.tossPay;
     this.money += earned;
     this.dayMoney += earned;
+    this.dayToss += v.tossPay;
     this.served++;
     this.starsSum += v.stars;
     this.starsN++;
@@ -823,20 +875,30 @@ class Game {
       found: [...this.found],
       best: this.best,
     });
-    $('end-title').textContent = `${day}일차 장사 마감`;
+    $('end-kicker').textContent = `DAY ${day} · 장사 마감`;
+    const starN = this.starsN ? Math.round(this.starsSum / this.starsN) : 0;
+    const stars = [1, 2, 3, 4, 5].map((k) => ICON('star', k <= starN ? 'on' : '')).join('');
     $('end-body').innerHTML =
-      `오늘 매출 <b>${won(this.dayMoney)}원</b><br>` +
-      `손님 <b>${this.served}명</b> 서빙 · <b>${this.lost}명</b> 놓침<br>` +
-      `평균 별점 <b>⭐ ${avg}</b><br>` +
-      `누적 <b>${won(this.money)}원</b> · 하루 최고 <b>${won(this.best)}원</b><br>` +
-      `레시피 <b>${this.found.size} / ${RECIPES.length}</b>`;
+      `<div class="rs-line"><span>서빙한 손님</span><b>${this.served}명</b></div>` +
+      `<div class="rs-line"><span>놓친 손님</span><b class="${this.lost ? 'bad' : ''}">${this.lost}명</b></div>` +
+      `<div class="rs-line"><span>평균 별점</span><span class="rs-stars">${stars}<b>${avg}</b></span></div>` +
+      `<div class="rs-line"><span>웍질 보너스</span><b class="hot">+${won(this.dayToss)}원</b></div>`;
+    $('end-money').textContent = `${won(this.dayMoney)}원`;
+    $('end-sum').textContent = `누적 ${won(this.money)}원`;
+    $('end-best').textContent = `하루 최고 ${won(this.best)}원${this.dayMoney > 0 && this.dayMoney >= this.best ? ' · 새 기록' : ''}`;
     const unlock = $('end-unlock');
     if (newIng) {
-      unlock.classList.remove('hidden');
-      unlock.innerHTML = `<span class="big">${newIng.emoji}</span><div><small>새 재료 해금</small><b>${newIng.name}</b></div>`;
+      const sp = T[newIng.speedKey];
+      const pace = sp < 0.8 ? '익는 속도 느림 · 일찍 넣어요' : sp > 1.15 ? '금방 익어요 · 늦게 넣어요' : '익는 속도 보통';
+      $('end-unlock-kicker').textContent = '새 재료 해금';
+      unlock.innerHTML = `${tok(newIng.id)}<b>${newIng.name}</b><span>${pace}</span>`;
     } else {
-      unlock.classList.add('hidden');
+      $('end-unlock-kicker').textContent = '재료';
+      unlock.innerHTML = `<b>모두 열었어요</b><span>모든 재료를 쓸 수 있어요. 남은 레시피를 찾아 보세요.</span>`;
     }
+    $('end-ings').textContent = `${this.unlocked} / ${INGREDIENTS.length}`;
+    $('end-recipes').textContent = `${this.found.size} / ${RECIPES.length}`;
+    $('next-label').textContent = `${this.round}회차 레시피 연구`;
     $('dayend').classList.remove('hidden');
   }
 
@@ -1098,21 +1160,24 @@ class Game {
     if (!this.active) return;
     const s = this.stats;
     const research = this.state === 'research';
-    $('day').textContent = research ? `🧪 ${this.round}회차 레시피 연구` : `🚚 ${this.round}일차 장사`;
-    if (research) {
-      $('clock').textContent = '';
-    } else {
+    $('day-kicker').textContent = research ? `ROUND ${this.round}` : `DAY ${this.round}`;
+    $('day').textContent = research ? '레시피 연구' : '장사 중';
+    if (!research) {
       const t = Math.max(0, Math.ceil(this.timeLeft));
-      $('clock').textContent = t > 0 ? `⏱ ${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}` : '⏱ 마감 임박';
+      $('clock').textContent = t > 0 ? `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}` : '마감';
+      const frac = clamp(this.timeLeft / T.dayLength, 0, 1);
+      $('time-fill').style.width = `${frac * 100}%`;
+      $('time-fill').parentElement!.classList.toggle('low', frac < 0.2);
     }
-    $('money').textContent = won(this.money);
+    $('money-label').textContent = research ? '보유' : '오늘 매출';
+    $('money').textContent = `${won(research ? this.money : this.dayMoney)}원`;
     $('rating').textContent = this.starsN ? (this.starsSum / this.starsN).toFixed(1) : '-';
 
     this.updateTutorial();
 
     // 연구 패널
     if (research) {
-      $('found-count').textContent = `${this.found.size} / ${RECIPES.length}`;
+      $('found-count').textContent = `${this.found.size}/${RECIPES.length}`;
       const tb = $<HTMLButtonElement>('taste-btn');
       tb.disabled = s.live < 8;
       $<HTMLButtonElement>('go-sell').disabled = this.tutorial;
@@ -1122,29 +1187,34 @@ class Game {
     const waiting = !research && !!c && c.state === 'waiting';
     $('ticket').classList.toggle('hidden', !waiting);
     if (c && waiting) {
-      $('ticket-name').textContent = `${c.recipe.name} · ${won(c.recipe.price)}원`;
-      const chips = c.recipe.steps.map(([id, n]) => {
-        const d = ingDef(id);
+      $('ticket-no').textContent = `주문 No. ${String(this.served + this.lost + 1).padStart(2, '0')}`;
+      $('ticket-price').textContent = `${won(c.recipe.price)}원`;
+      $('ticket-name').textContent = c.recipe.name;
+      const rows = c.recipe.steps.map(([id, n], i) => {
         const got = this.counts.get(id) ?? 0;
-        const cls = got === 0 ? '' : got === n ? 'ok' : 'part';
-        return `<span class="chip ${cls}">${d.emoji} ${d.name} <small>${got}/${n}</small></span>`;
+        const cls = got === 0 ? '' : got === n ? 'ok' : got > n ? 'wrong' : 'part';
+        return `<div class="tk-step ${cls}"><span class="no">${i + 1}</span>${tok(id, 'sm')}<span class="nm">${ingDef(id).name}</span><span class="ct">${got} / ${n}</span></div>`;
       });
       for (const id of this.counts.keys()) {
         if (c.recipe.steps.some(([x]) => x === id)) continue;
-        const d = ingDef(id);
-        chips.push(`<span class="chip wrong">${d.emoji} ${d.name}</span>`);
+        rows.push(`<div class="tk-step wrong"><span class="no">✕</span>${tok(id, 'sm')}<span class="nm">${ingDef(id).name}</span><span class="ct">주문에 없음</span></div>`);
       }
-      this.setHtml('ticket-ings', chips.join('<span class="arrow">→</span>'));
+      this.setHtml('ticket-ings', rows.join(''));
+      const f = c.patienceFrac;
       const p = $('patience');
-      p.style.width = `${c.patienceFrac * 100}%`;
-      p.classList.toggle('low', c.patienceFrac < 0.3);
+      p.style.width = `${f * 100}%`;
+      p.className = f < 0.25 ? 'low' : f < 0.5 ? 'mid' : '';
+      $('patience-label').textContent = f < 0.25 ? '곧 떠나요!' : f < 0.5 ? '조금 급해요' : '여유 있어요';
     }
     for (const [id, b] of this.ingButtons) {
       const open = this.isUnlocked(id);
       const n = this.counts.get(id) ?? 0;
       b.classList.toggle('locked', !open);
+      b.classList.toggle('full', n >= MAX_PORTIONS);
       b.disabled = !open || n >= MAX_PORTIONS;
+      b.setAttribute('aria-label', open ? `${ingDef(id).name} 넣기 (${n}/${MAX_PORTIONS})` : '잠긴 재료');
       (b.querySelector('.cnt') as HTMLElement).textContent = n ? `×${n}` : '';
+      (b.querySelector('em') as HTMLElement).textContent = open ? ingDef(id).name : '잠김';
       const want = waiting && c ? c.recipe.steps.find(([x]) => x === id) : undefined;
       b.classList.toggle('need', !!want && n < want[1]);
     }
@@ -1164,12 +1234,13 @@ class Game {
       rows.push(id);
     }
     const rowsHtml = rows
-      .map(
-        (id) =>
-          `<div class="crow"><span>${ingDef(id).emoji}</span><div class="bar cook"><div class="zone"></div><div class="fill" data-id="${id}"></div></div></div>`,
-      )
+      .map((id) => {
+        const t = this.types[ING_INDEX[id]];
+        const st = t.avgCook < T.cookMin ? ['', '덜 익음'] : t.avgCook > T.cookMax ? ['bad', '너무 익음'] : ['ok', '딱 좋음'];
+        return `<div class="crow"><div class="g-line"><span class="g-name">${tok(id, 'sm')}${ingDef(id).name}</span><span class="cstat ${st[0]}">${st[1]}</span></div><div class="bar cook"><div class="zone"></div><div class="fill" data-id="${id}"></div></div></div>`;
+      })
       .join('');
-    this.setHtml('cook-rows', rowsHtml || '<div class="small dim">재료를 넣어 주세요</div>');
+    this.setHtml('cook-rows', rowsHtml || '<div class="empty">재료를 넣어 주세요</div>');
     const gauge = $('gauge');
     gauge.style.setProperty('--zl', `${clamp(T.cookMin / GAUGE_MAX, 0, 1) * 100}%`);
     gauge.style.setProperty('--zw', `${clamp((T.cookMax - T.cookMin) / GAUGE_MAX, 0, 1) * 100}%`);
@@ -1178,16 +1249,23 @@ class Game {
       el.style.width = `${clamp((t?.avgCook ?? 0) / GAUGE_MAX, 0, 1) * 100}%`;
     }
     let label = '-';
+    let cls = '';
     if (rows.length) {
-      if (over) label = '과하게 익음';
-      else if (under) label = `덜 익음 ${under}`;
-      else label = '딱 좋음!';
+      if (over) [label, cls] = [`너무 익음 ${over}`, 'bad'];
+      else if (under) [label, cls] = [`덜 익음 ${under}`, 'warn'];
+      else [label, cls] = ['딱 좋음', 'ok'];
     }
     $('cook-text').textContent = label;
+    $('cook-text').className = cls;
     const or = this.oilRatio();
-    $('oil-text').textContent = this.oilMl > 0.05 || this.counts.size
-      ? `${Math.round(this.oilMl)}ml · ${or < T.oilMin ? '적음' : or > T.oilMax ? '많음' : '적당'}`
-      : '-';
+    const oilOk = or >= T.oilMin && or <= T.oilMax;
+    this.setHtml(
+      'oil-text',
+      this.oilMl > 0.05 || this.counts.size
+        ? `${Math.round(this.oilMl)}ml<span class="oil-st"> · ${or < T.oilMin ? '적음' : or > T.oilMax ? '많음' : '적당'}</span>`
+        : '-',
+    );
+    $('oil-text').className = this.oilMl > 0.05 ? (oilOk ? 'ok' : 'warn') : '';
     gauge.style.setProperty('--ol', `${clamp(T.oilMin / 2, 0, 1) * 100}%`);
     gauge.style.setProperty('--ow', `${clamp((T.oilMax - T.oilMin) / 2, 0, 1) * 100}%`);
     $('oil-fill').style.width = `${clamp(or / 2, 0, 1) * 100}%`;

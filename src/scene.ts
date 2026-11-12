@@ -173,7 +173,7 @@ export function buildWorld(): World {
     c.fillStyle = '#fff6dd';
     c.textAlign = 'center';
     c.font = 'bold 76px sans-serif';
-    c.fillText('웍 트럭', 256, 110);
+    c.fillText('웍웍!', 256, 110);
     c.font = '40px sans-serif';
     c.fillStyle = '#ffcf6b';
     c.fillText('불맛 볶음밥 전문', 256, 190);

@@ -3,50 +3,104 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>웍 트럭 - 볶음밥 푸드트럭 시뮬레이터</title>
+    <title>웍웍! - 불맛 볶음밥 푸드트럭</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="./src/style.css" />
   </head>
   <body>
     <canvas id="game"></canvas>
     <div id="flash"></div>
 
-    <div id="hud" class="hidden">
+    <!-- 아이콘 (선 아이콘, currentColor) -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 3c3 4 6 6 6 10a6 6 0 01-12 0c0-3 2-4 3-7 1 2 2 3 3 3 0-2 0-4 0-6z" /></symbol>
+      <symbol id="i-flask" viewBox="0 0 24 24"><path d="M9 3h6" /><path d="M10 3v6L5 18a2 2 0 002 3h10a2 2 0 002-3l-5-9V3" /><path d="M7.5 14h9" /></symbol>
+      <symbol id="i-truck" viewBox="0 0 24 24"><path d="M3 6h11v10H3z" /><path d="M14 10h4l3 3v3h-7" /><circle cx="7" cy="17" r="2" /><circle cx="17" cy="17" r="2" /></symbol>
+      <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2z" /><path d="M4 19V5" /></symbol>
+      <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7" /><path d="M5 10v10h14V10" /></symbol>
+      <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z" /><path d="M17 9a4 4 0 010 6" /></symbol>
+      <symbol id="i-mute" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z" /><path d="M17 10l4 4M21 10l-4 4" /></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16" /><path d="M9 7V4h6v3" /><path d="M6 7l1 13h10l1-13" /></symbol>
+      <symbol id="i-spoon" viewBox="0 0 24 24"><ellipse cx="12" cy="7" rx="4" ry="5" /><path d="M12 12v9" /></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></symbol>
+      <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 3s6 7 6 11a6 6 0 01-12 0c0-4 6-11 6-11z" /></symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" /></symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 018 0v3" /></symbol>
+      <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" /></symbol>
+    </svg>
+
+    <div id="hud" class="hidden" data-mode="research">
       <div id="top">
         <div class="panel" id="status">
-          <div><b id="day">1일차</b> <span id="clock"></span></div>
-          <div>💰 <b id="money">0</b>원 · ⭐ <b id="rating">-</b></div>
+          <div class="st-badge">
+            <svg class="research-only"><use href="#i-flask" /></svg>
+            <svg class="sell-only"><use href="#i-truck" /></svg>
+          </div>
+          <div class="st-col">
+            <span class="st-kicker" id="day-kicker">ROUND 1</span>
+            <span class="st-title" id="day">레시피 연구</span>
+          </div>
+          <i class="st-sep sell-only"></i>
+          <div class="st-col st-time sell-only">
+            <span class="st-val"><svg class="ic-s"><use href="#i-clock" /></svg><b id="clock">2:30</b></span>
+            <div class="st-timebar"><i id="time-fill"></i></div>
+          </div>
+          <i class="st-sep"></i>
+          <div class="st-col">
+            <span class="st-label" id="money-label">보유</span>
+            <span class="st-val"><b id="money">0원</b></span>
+          </div>
+          <div class="st-col sell-only">
+            <span class="st-label">평균 별점</span>
+            <span class="st-val"><svg class="ic-s star"><use href="#i-star" /></svg><b id="rating">-</b></span>
+          </div>
         </div>
-        <div class="panel hidden" id="lab">
-          <button type="button" id="book-btn">📖 레시피 북 <b id="found-count">0 / 13</b></button>
-        </div>
-        <div class="panel hidden" id="ticket">
-          <div id="ticket-name"></div>
-          <div id="ticket-ings"></div>
-          <div class="bar"><div id="patience"></div></div>
-        </div>
+        <button type="button" class="panel research-only" id="book-btn">
+          <svg class="ic"><use href="#i-book" /></svg><span class="bb-text">레시피 북</span> <b id="found-count">0/13</b>
+        </button>
         <div class="top-btns">
-          <button type="button" class="panel icon" id="home-btn" aria-label="로비로">🏠</button>
-          <button type="button" class="panel icon" id="mute" aria-label="소리 켜기/끄기">🔊</button>
+          <button type="button" class="icon-btn" id="home-btn" aria-label="로비로"><svg class="ic"><use href="#i-home" /></svg></button>
+          <button type="button" class="icon-btn" id="mute" aria-label="소리 켜기/끄기"><svg class="ic"><use href="#i-sound" /></svg></button>
         </div>
       </div>
 
-      <div class="panel hidden" id="guide">
-        <div class="guide-head"><span class="guide-title">📝 튜토리얼 · 파 계란 볶음밥</span><span id="guide-count"></span></div>
+      <div id="ticket" class="hidden">
+        <div class="tk-clip"></div>
+        <div class="tk-paper">
+          <div class="tk-head"><span id="ticket-no">주문</span><span id="ticket-price"></span></div>
+          <div class="tk-name" id="ticket-name"></div>
+          <div class="tk-steps" id="ticket-ings"></div>
+          <div class="tk-pat">
+            <div class="tk-pat-label"><span>손님 인내심</span><span id="patience-label"></span></div>
+            <div class="tk-bar"><i id="patience"></i></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="hidden" id="guide">
+        <div class="guide-head"><span class="guide-title">튜토리얼 · 파 계란 볶음밥</span><span id="guide-count"></span></div>
         <div class="guide-dots" id="guide-dots"></div>
         <div class="guide-step"><span id="guide-icon"></span><div><b id="guide-name"></b><p id="guide-text"></p></div></div>
         <div class="guide-warn hidden" id="guide-warn"></div>
         <div class="steps" id="guide-steps"></div>
       </div>
-      <div id="tut-arrow" class="hidden"><b></b><span>👇</span></div>
+      <div id="tut-arrow" class="hidden"><b></b><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14l-7 10z" /></svg></div>
 
       <div class="panel" id="gauge">
-        <div class="glabel">익힘 <span id="cook-text">-</span></div>
+        <div class="g-head"><span>익힘</span><span id="cook-text">-</span></div>
         <div id="cook-rows"></div>
-        <div class="glabel oil">🧴 기름 <span id="oil-text">-</span></div>
-        <div class="bar oil"><div class="zone"></div><div id="oil-fill"></div></div>
-        <div class="gsmall"><span>남은 양 <b id="amount">-</b></span><span>탄 재료 <b id="burnt">-</b></span></div>
-        <div class="glabel toss">🔥 웍질 보너스 <span id="toss-text">-</span></div>
-        <div class="bar toss" id="toss-bar"><div id="toss-fill"></div></div>
+        <i class="g-sep"></i>
+        <div class="g-row g-oil">
+          <div class="g-line"><span class="g-name"><svg class="ic-s oil"><use href="#i-drop" /></svg>기름</span><span id="oil-text">-</span></div>
+          <div class="bar oil"><div class="zone"></div><div id="oil-fill"></div></div>
+        </div>
+        <div class="g-stats"><div><span>남은 양</span><b id="amount">-</b></div><div><span>탄 재료</span><b id="burnt">-</b></div></div>
+        <div class="g-row g-toss">
+          <div class="g-line"><span class="g-name"><svg class="ic-s fire"><use href="#i-flame" /></svg>웍질 보너스</span><span id="toss-text">-</span></div>
+          <div class="bar toss" id="toss-bar"><div id="toss-fill"></div></div>
+        </div>
       </div>
 
       <div id="bubble" class="hidden"></div>
@@ -55,28 +109,50 @@
       <div id="tosspops"></div>
 
       <div id="bottom">
-        <div id="ings"></div>
+        <div id="tray">
+          <div class="tray-label research-only">재료 · 1번 적게 · 2번 기본 · 3번 많이</div>
+          <div id="ings"></div>
+        </div>
         <div id="actions">
-          <button type="button" id="trash">🗑️ 버리기</button>
-          <button type="button" id="taste-btn" class="hot">👅 맛보기</button>
-          <button type="button" id="go-sell">🚚 장사하러 가기</button>
-          <button type="button" id="serve" class="hot">🍽️ 내놓기</button>
+          <button type="button" id="taste-btn" class="btn-hot"><svg class="ic"><use href="#i-spoon" /></svg>맛보기</button>
+          <button type="button" id="trash" class="icon-btn" aria-label="버리기"><svg class="ic"><use href="#i-trash" /></svg></button>
+          <button type="button" id="go-sell" class="btn-sky"><svg class="ic"><use href="#i-truck" /></svg>장사하러 가기</button>
+          <button type="button" id="serve" class="btn-hot"><span>내놓기</span><small>스페이스</small></button>
         </div>
       </div>
     </div>
 
-    <div class="overlay" id="lobby">
-      <div class="card lobby-card">
-        <div class="logo">🔥</div>
-        <h1>웍 트럭</h1>
-        <p class="sub">집에서 레시피를 연구하고, 푸드트럭에서 팔아요</p>
-        <div class="loop"><span>🧪 레시피 연구</span><span class="arrow">→</span><span>🚚 장사</span><span class="arrow">→</span><span>📊 결과 · 새 재료</span></div>
-        <div class="lobby-btns">
-          <button type="button" id="continue" class="big">이어서 하기</button>
-          <div class="save-info" id="save-info"></div>
-          <button type="button" id="newgame" class="ghost">처음부터</button>
-          <button type="button" id="lobby-book" class="ghost hidden">📖 레시피 북</button>
+    <div id="lobby" class="screen">
+      <div class="lb-shade"></div>
+      <div class="lb-col">
+        <div class="lb-brand">
+          <div class="lb-kicker"><svg class="ic-s"><use href="#i-flame" /></svg>불맛 볶음밥 푸드트럭</div>
+          <h1>웍웍!</h1>
+          <p>집 주방에서 레시피를 연구하고, 밤거리 푸드트럭에서 팔아요.</p>
         </div>
+        <div class="lb-btns">
+          <button type="button" id="continue" class="lb-main">
+            <span class="lb-main-text"><b>이어서 하기</b><small id="save-info"></small></span>
+            <svg class="ic"><use href="#i-arrow" /></svg>
+          </button>
+          <div class="lb-two">
+            <button type="button" id="newgame" class="lb-ghost">처음부터</button>
+            <button type="button" id="lobby-book" class="lb-ghost hidden"><svg class="ic-s"><use href="#i-book" /></svg>레시피 북</button>
+          </div>
+        </div>
+        <div class="lb-save hidden" id="lb-save">
+          <div class="lb-save-head"><span>저장된 진행</span><span id="lb-best"></span></div>
+          <div class="lb-stats">
+            <div><span>회차</span><b id="lb-round"></b></div>
+            <div><span>레시피</span><b id="lb-recipes"></b></div>
+            <div><span>누적</span><b id="lb-money"></b></div>
+          </div>
+          <div class="lb-ings"><span id="lb-ing-label"></span><div id="lb-ings"></div></div>
+        </div>
+      </div>
+      <button type="button" class="icon-btn lb-mute" id="lobby-mute" aria-label="소리 켜기/끄기"><svg class="ic"><use href="#i-sound" /></svg></button>
+      <div class="lb-flow">
+        <span class="on">레시피 연구</span><svg class="ic-s"><use href="#i-arrow" /></svg><span>장사</span><svg class="ic-s"><use href="#i-arrow" /></svg><span>결과 · 새 재료</span>
       </div>
     </div>
 
@@ -101,22 +177,48 @@
     </div>
 
     <div class="overlay hidden" id="book">
-      <div class="card book-card">
-        <div class="book-head">
-          <h2>📖 레시피 북</h2>
-          <span id="book-count"></span>
-          <button type="button" id="book-close" class="ghost" aria-label="닫기">✕</button>
+      <div class="book">
+        <div class="bk-cover">
+          <div class="bk-title"><svg class="ic"><use href="#i-book" /></svg><h2>레시피 북</h2></div>
+          <div class="bk-prog">
+            <div class="bk-count"><span>찾은 레시피</span><b id="book-count"></b></div>
+            <div class="bk-bar"><i id="book-bar"></i></div>
+          </div>
+          <div class="bk-legend">
+            <b>읽는 법</b>
+            <span>번호 순서대로 웍에 넣어요. 점은 양이에요.</span>
+            <span class="lg"><span class="dots3 light"><i class="on"></i><i></i><i></i></span>적게</span>
+            <span class="lg"><span class="dots3 light"><i class="on"></i><i class="on"></i><i></i></span>기본</span>
+            <span class="lg"><span class="dots3 light"><i class="on"></i><i class="on"></i><i class="on"></i></span>많이</span>
+          </div>
+          <button type="button" id="book-close" class="bk-close">닫기</button>
         </div>
-        <div id="book-grid"></div>
+        <div class="bk-page">
+          <div class="bk-tabs" id="book-tabs">
+            <button type="button" data-f="all"></button>
+            <button type="button" data-f="found"></button>
+            <button type="button" data-f="open"></button>
+          </div>
+          <div id="book-grid"></div>
+        </div>
       </div>
     </div>
 
     <div class="overlay hidden" id="dayend">
-      <div class="card">
-        <h1 id="end-title">1일차 장사 마감</h1>
-        <div id="end-body"></div>
-        <div id="end-unlock" class="hidden"></div>
-        <button type="button" id="next">🧪 다음 회차 레시피 연구</button>
+      <div class="result">
+        <div class="rs-receipt">
+          <div class="rs-headline"><span class="rs-kicker" id="end-kicker"></span><h1 id="end-title">오늘의 결과</h1></div>
+          <div class="rs-lines" id="end-body"></div>
+          <div class="rs-total"><span>오늘 매출</span><b id="end-money"></b></div>
+          <div class="rs-foot"><span id="end-sum"></span><span id="end-best"></span></div>
+        </div>
+        <div class="rs-side">
+          <span class="rs-kicker light" id="end-unlock-kicker">새 재료 해금</span>
+          <div id="end-unlock"></div>
+          <div class="rs-kv"><span>재료</span><b id="end-ings"></b></div>
+          <div class="rs-kv"><span>찾은 레시피</span><b id="end-recipes"></b></div>
+          <button type="button" id="next" class="btn-hot"><span id="next-label">다음 회차 레시피 연구</span><svg class="ic"><use href="#i-arrow" /></svg></button>
+        </div>
       </div>
     </div>
 
