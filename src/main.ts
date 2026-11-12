@@ -573,15 +573,26 @@ class Game {
       }
     }
     const ings = recipeIngs(best);
-    const match = ings.filter((i) => set.has(i)).length;
-    const missing = ings.length - match;
-    const extra = set.size - match;
-    const lines: string[] = [];
-    if (match === 0) lines.push('전혀 어울리지 않는 조합이에요.');
-    else lines.push(`넣은 재료 중 <b>${match}가지</b>는 잘 어울려요.`);
-    if (match > 0 && extra > 0) lines.push(`<b>${extra}가지</b>는 안 어울리는 것 같아요.`);
-    if (match > 0 && missing > 0) lines.push(`뭔가 <b>${missing}가지</b>가 더 필요해요.`);
-    return `<p>${lines.join('<br>')}</p>`;
+    // 넣은 순서대로 어울리는 재료 / 안 어울리는 재료를 나눈다
+    const added = this.order.filter((id) => set.has(id));
+    const good = added.filter((id) => ings.includes(id));
+    const bad = added.filter((id) => !ings.includes(id));
+    const missing = ings.length - good.length;
+    const chip = (id: IngId, cls: string) => `<span class="fb-chip ${cls}">${tok(id, 'sm')}${ingDef(id).name}</span>`;
+    const rows: string[] = [];
+    if (!good.length) {
+      rows.push('<p>전혀 어울리지 않는 조합이에요.</p>');
+    } else {
+      rows.push(`<div class="fb-row"><span class="fb-label">잘 어울려요</span><div class="fb-chips">${good.map((id) => chip(id, 'good')).join('')}</div></div>`);
+    }
+    if (good.length && bad.length) {
+      rows.push(`<div class="fb-row"><span class="fb-label">안 어울려요</span><div class="fb-chips">${bad.map((id) => chip(id, 'bad')).join('')}</div></div>`);
+    }
+    if (good.length && missing > 0) {
+      const q = Array.from({ length: missing }, () => '<span class="fb-chip need">?</span>').join('');
+      rows.push(`<div class="fb-row"><span class="fb-label">${missing}가지 더 필요해요</span><div class="fb-chips">${q}</div></div>`);
+    }
+    return `<div class="fb">${rows.join('')}</div>`;
   }
 
   private showTaste(icon: UiIcon, title: string, html: string, clear = false) {

@@ -280,6 +280,17 @@ button:focus-visible { outline: 3px solid var(--lantern); outline-offset: 2px; }
 .row-btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 18px; }
 #taste-body { font-size: 16px; line-height: 1.7; margin: 6px 0 18px; }
 #taste-body b { color: #b8321f; }
+/* 맛보기 반응: 어울리는 재료 · 안 어울리는 재료 · 더 필요한 개수 */
+.fb { display: flex; flex-direction: column; gap: 12px; text-align: left; }
+.fb p { text-align: center; }
+.fb-row { display: flex; flex-direction: column; gap: 6px; }
+.fb-label { font-size: 13px; font-weight: 700; color: var(--ink-2); }
+.fb-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.fb-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 4px 12px 4px 6px; border-radius: 10px; font-size: 15px; font-weight: 700; }
+.fb-chip .tok.sm { width: 22px; height: 22px; }
+.fb-chip.good { background: #ddf1d6; color: #2f6b2a; box-shadow: inset 0 0 0 2px #8cc97a; }
+.fb-chip.bad { background: #fde2da; color: #9e2a16; box-shadow: inset 0 0 0 2px #f0a08c; text-decoration: line-through; text-decoration-thickness: 2px; }
+.fb-chip.need { min-width: 32px; justify-content: center; padding: 4px 10px; background: transparent; color: #a8501f; border: 2px dashed #d9b27a; font-family: var(--display); font-weight: 400; font-size: 17px; }
 #taste-body .small { font-size: 13px; color: var(--ink-2); }
 .small { font-size: 12px; opacity: .8; }
 
