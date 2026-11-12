@@ -15,12 +15,18 @@ const DAY_LENGTH = 150;
 const COOK_MIN = 0.85;
 const COOK_MAX = 1.25;
 const GAUGE_MAX = 1.6;
+/** 재료 1조각당 이만큼(m) 높이를 누적하면 웍질 보너스 만점 */
+const TOSS_FULL = 0.25;
+const TOSS_QUALITY = 0.2;
+const TOSS_PAY = 0.3;
 
 interface Verdict {
   quality: number;
   stars: number;
   pay: number;
   tip: number;
+  toss: number;
+  tossPay: number;
   comment: string;
 }
 
@@ -40,6 +46,7 @@ class Game {
   private nextCustomerIn = 1.5;
   private added = new Set<IngId>();
   private dishTotal = 0;
+  private tossPopupCd = 0;
   private stats: DishStats = { live: 0, avgCook: 0, sdCook: 0, burntFrac: 0, contacts: 0 };
   private plateT = -1;
   private plateFrom = new THREE.Vector3();
@@ -174,6 +181,8 @@ class Game {
   private resetDish() {
     this.added.clear();
     this.dishTotal = 0;
+    this.particles.tossSum = 0;
+    this.particles.tossPeak = 0;
   }
 
   private spawnCustomer() {
@@ -221,7 +230,10 @@ class Game {
     else if (s.avgCook > COOK_MAX) cookScore = Math.max(0, 1 - (s.avgCook - COOK_MAX) / 0.5);
     const evenScore = clamp(1 - (s.sdCook - 0.2) / 0.5, 0.5, 1);
     const burnScore = clamp(1 - s.burntFrac * 2.5, 0, 1);
-    const quality = ingScore * amountScore * cookScore * evenScore * burnScore;
+    const base = ingScore * amountScore * cookScore * evenScore * burnScore;
+    // 웍질 보너스: 재료가 높이 떠오를수록 가산점 (기본 점수에 비례해서 붙는다)
+    const toss = this.tossFrac();
+    const quality = Math.min(1, base * (1 + TOSS_QUALITY * toss));
 
     // 가장 문제가 되는 항목으로 손님 반응을 정한다
     const issues: [number, string][] = [
@@ -233,22 +245,31 @@ class Game {
     ];
     issues.sort((a, b) => a[0] - b[0]);
     let comment: string;
-    if (quality >= 0.9) comment = '완벽해요! 불맛 최고 🔥';
+    if (quality >= 0.9 && toss >= 0.7) comment = '완벽해요! 불맛 최고 🔥';
+    else if (quality >= 0.9) comment = '완벽해요! 😍';
     else if (quality >= 0.75) comment = '맛있어요! 😋';
     else comment = issues[0][1];
 
     const stars = clamp(Math.round(1 + 4 * quality), 1, 5);
     const pay = quality < 0.25 ? 0 : Math.round((recipe.price * (0.4 + 0.6 * quality)) / 100) * 100;
     const tip = quality >= 0.8 ? Math.round((recipe.price * 0.25 * patienceFrac) / 100) * 100 : 0;
-    return { quality, stars, pay, tip, comment };
+    const tossPay = pay > 0 ? Math.round((recipe.price * TOSS_PAY * toss) / 100) * 100 : 0;
+    return { quality, stars, pay, tip, toss, tossPay, comment };
+  }
+
+  /** 웍질 보너스 0~1: 조각당 누적 떠오른 높이 기준 */
+  private tossFrac() {
+    const n = Math.max(1, this.dishTotal);
+    return clamp(this.particles.tossSum / n / TOSS_FULL, 0, 1);
   }
 
   serve() {
     const c = this.customer;
     if (this.state !== 'playing' || !c || c.state !== 'waiting' || this.stats.live < 8) return;
     const v = this.judge(c.recipe, c.patienceFrac);
-    this.money += v.pay + v.tip;
-    this.dayMoney += v.pay + v.tip;
+    const earned = v.pay + v.tip + v.tossPay;
+    this.money += earned;
+    this.dayMoney += earned;
     this.served++;
     this.starsSum += v.stars;
     this.starsN++;
@@ -276,7 +297,10 @@ class Game {
 
     const starStr = '★'.repeat(v.stars) + '☆'.repeat(5 - v.stars);
     if (v.pay > 0) {
-      this.toast(`${starStr}  +${won(v.pay)}원`, v.tip ? `팁 +${won(v.tip)}원` : '', v.stars >= 4 ? 'good' : '');
+      const extras = [];
+      if (v.tossPay) extras.push(`🔥 웍질 보너스 +${won(v.tossPay)}원`);
+      if (v.tip) extras.push(`팁 +${won(v.tip)}원`);
+      this.toast(`${starStr}  +${won(v.pay)}원`, extras.join(' · '), v.stars >= 4 ? 'good' : '');
       this.sfx.play(v.stars >= 4 ? 'ding' : 'coin', 0.6);
     } else {
       this.toast(`${starStr}  환불…`, '손님이 돈을 내지 않았어요', 'bad');
@@ -314,6 +338,14 @@ class Game {
       `평균 별점 <b>⭐ ${avg}</b><br>` +
       `누적 <b>${won(this.money)}원</b> · 하루 최고 <b>${won(best)}원</b>`;
     $('dayend').classList.remove('hidden');
+  }
+
+  private popToss(text: string, cm: number) {
+    const el = document.createElement('div');
+    el.className = `tosspop${cm >= 20 ? ' big' : cm >= 14 ? ' mid' : ''}`;
+    el.textContent = text;
+    $('tosspops').appendChild(el);
+    setTimeout(() => el.remove(), 1100);
   }
 
   private toast(title: string, sub: string, cls: string) {
@@ -379,6 +411,16 @@ class Game {
     if (this.particles.newlySpilled > 0) {
       this.sfx.play('spill', Math.min(0.6, 0.15 + this.particles.newlySpilled * 0.08), 0.06);
       this.particles.newlySpilled = 0;
+    }
+    this.tossPopupCd -= dt;
+    const peak = this.particles.tossPeak;
+    if (peak > 0 && this.tossPopupCd <= 0 && this.state === 'playing') {
+      if (peak >= 0.08) {
+        const cm = Math.round(peak * 100);
+        this.popToss(cm >= 20 ? `🔥🔥 ${cm}cm!!` : cm >= 14 ? `🔥 ${cm}cm!` : `${cm}cm`, cm);
+        this.tossPopupCd = 0.9;
+      }
+      this.particles.tossPeak = 0;
     }
     const sp = this.wok.speed;
     if (sp > 1.3 && this.stats.live > 0) this.sfx.play('whoosh', clamp(sp / 4, 0.15, 0.6), 0.22);
@@ -460,6 +502,9 @@ class Game {
     $('cook-text').textContent = label;
     $('amount').textContent = has && this.dishTotal ? `${Math.round((s.live / this.dishTotal) * 100)}%` : '-';
     $('burnt').textContent = has ? `${Math.round(s.burntFrac * 100)}%` : '-';
+    const toss = has ? this.tossFrac() : 0;
+    $('toss-fill').style.width = `${toss * 100}%`;
+    $('toss-text').textContent = has ? `+${Math.round(toss * 100)}%` : '-';
 
     // 말풍선
     const speaker = c && c.say ? c : this.leaving.find((l) => l.say);

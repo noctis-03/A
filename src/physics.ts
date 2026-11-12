@@ -11,6 +11,8 @@ const RESTITUTION = 0.05;
 const FRICTION = 0.38;
 const COOK_RATE = 0.115; // 웍 바닥에 닿아 있을 때 초당 익는 정도
 const SPILL_LIFE = 7;
+/** 이보다 낮게 뜬 건 웍질로 치지 않는다 (m) */
+const TOSS_MIN = 0.04;
 
 /** 웍 밖 지형 높이: 조리대 / 트럭 바닥 / 트럭 밖 길 */
 function groundHeight(x: number, z: number) {
@@ -44,8 +46,9 @@ export class Particles {
   r = new Float32Array(this.max);
   cook = new Float32Array(this.max);
   burn = new Float32Array(this.max);
-  /** 웍 바닥에 계속 붙어 있던 시간 */
-  contact = new Float32Array(this.max);
+  /** 마지막으로 웍에서 떠난 순간의 높이 / 공중에서 도달한 최고 높이 (웍질 보너스용) */
+  launchY = new Float32Array(this.max);
+  peakY = new Float32Array(this.max);
   /** 마지막으로 웍에 닿은 뒤 지난 시간 */
   air = new Float32Array(this.max);
   age = new Float32Array(this.max);
@@ -54,6 +57,10 @@ export class Particles {
 
   /** 이번 스텝에서 새로 흘린 조각 수 (게임 쪽에서 읽고 0으로 리셋) */
   newlySpilled = 0;
+  /** 웍 안으로 무사히 다시 떨어진 조각들이 떠오른 높이(m)의 합 (게임 쪽에서 리셋) */
+  tossSum = 0;
+  /** 최근 착지한 조각 중 가장 높이 떠오른 높이(m) (게임 쪽에서 읽고 0으로 리셋) */
+  tossPeak = 0;
 
   spawn(type: number, x: number, y: number, z: number, vy0 = 0): number {
     let i = -1;
@@ -82,7 +89,8 @@ export class Particles {
     this.r[i] = INGREDIENTS[type].radius * (0.9 + Math.random() * 0.2);
     this.cook[i] = 0;
     this.burn[i] = 0;
-    this.contact[i] = 0;
+    this.launchY[i] = y;
+    this.peakY[i] = y;
     this.air[i] = 1;
     this.age[i] = 0;
     this.type[i] = type;
@@ -237,7 +245,6 @@ export class Particles {
           let ry = vy[i] - sy;
           let rz = vz[i] - sz;
           const vn = rx * nx + ry * ny + rz * nz;
-          let slide = 0;
           if (vn < 0) {
             const jn = -vn * (1 + RESTITUTION);
             rx += nx * jn;
@@ -249,7 +256,6 @@ export class Particles {
             const ty = ry - ny * tn;
             const tz = rz - nz * tn;
             const tl = Math.sqrt(tx * tx + ty * ty + tz * tz);
-            slide = tl;
             if (tl > 1e-6) {
               const f = Math.min(tl, FRICTION * jn + tl * 2.5 * h) / tl;
               rx -= tx * f;
@@ -269,10 +275,17 @@ export class Particles {
           // 가열: 바닥 쪽일수록 뜨겁다
           const hot = ly < 0.075 ? 1 : 0.55;
           this.cook[i] += COOK_RATE * hot * heat * h;
+          // 웍질: 공중에 떴다가 웍 안으로 다시 떨어지면 떠오른 높이만큼 점수
+          if (this.air[i] > 0.08) {
+            const lift = this.peakY[i] - this.launchY[i];
+            if (lift > TOSS_MIN) {
+              this.tossSum += lift;
+              if (lift > this.tossPeak) this.tossPeak = lift;
+            }
+          }
           this.air[i] = 0;
-          if (slide > 0.12) this.contact[i] = Math.max(0, this.contact[i] - 3 * h);
-          else this.contact[i] += h * heat;
-          if (this.contact[i] > 4) this.burn[i] += 0.3 * h * heat;
+          this.launchY[i] = py[i];
+          this.peakY[i] = py[i];
         } else if (inside) {
           // 다른 재료 위에 얹혀 있음 → 천천히 익는다
           this.cook[i] += COOK_RATE * 0.22 * heat * h;
@@ -282,7 +295,7 @@ export class Particles {
 
       if (!touched) {
         this.air[i] += h;
-        if (this.air[i] > 0.12) this.contact[i] = 0;
+        if (py[i] > this.peakY[i]) this.peakY[i] = py[i];
         const gy = groundHeight(px[i], pz[i]);
         if (py[i] - ri < gy) {
           // 웍 바로 아래로 파고든 경우는 무시할 수 없으므로 그대로 바닥 처리

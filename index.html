@@ -27,11 +27,14 @@
         <div class="glabel">익힘 <span id="cook-text">-</span></div>
         <div class="bar cook"><div class="zone"></div><div id="cook-fill"></div></div>
         <div class="gsmall"><span>남은 양 <b id="amount">-</b></span><span>탄 재료 <b id="burnt">-</b></span></div>
+        <div class="glabel toss">🔥 웍질 보너스 <span id="toss-text">-</span></div>
+        <div class="bar toss"><div id="toss-fill"></div></div>
       </div>
 
       <div id="bubble" class="hidden"></div>
-      <div id="hint">웍을 누른 채로 끌어서 흔드세요 · 세게 흔들면 쏟아져요!</div>
+      <div id="hint">웍을 누른 채로 끌어서 흔드세요 · 높이 띄울수록 보너스!</div>
       <div id="toasts"></div>
+      <div id="tosspops"></div>
 
       <div id="bottom">
         <div id="ings"></div>
@@ -48,7 +51,7 @@
         <p class="sub">불맛 볶음밥 푸드트럭 시뮬레이터</p>
         <ol>
           <li>손님의 <b>주문서</b>를 보고 재료를 웍에 넣으세요.</li>
-          <li>웍을 <b>누른 채로 끌어서</b> 흔들어 골고루 볶으세요.<br />가만히 두면 바닥이 타고, 너무 세게 흔들면 재료가 튀어 나갑니다.</li>
+          <li>웍을 <b>누른 채로 끌어서</b> 흔들어 골고루 볶으세요.<br />재료를 <b>높이 띄울수록 웍질 보너스</b>! 단, 웍 밖으로 튀면 양이 줄고, 너무 오래 볶으면 탑니다.</li>
           <li>익힘 게이지가 초록 구간에 오면 <b>내놓기</b>!</li>
         </ol>
         <button id="start">장사 시작</button>
