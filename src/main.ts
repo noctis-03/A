@@ -299,8 +299,9 @@ class Game {
   private endDay() {
     this.state = 'dayend';
     this.wok.release();
-    const best = Math.max(Number(localStorage.getItem('woktruck.best') ?? 0), this.dayMoney);
+    let best = this.dayMoney;
     try {
+      best = Math.max(Number(localStorage.getItem('woktruck.best') ?? 0), best);
       localStorage.setItem('woktruck.best', String(best));
     } catch {
       /* 저장 불가 환경은 무시 */
