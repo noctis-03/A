@@ -21,7 +21,7 @@
 }
 * { box-sizing: border-box; }
 html, body {
-  margin: 0; height: 100%; overflow: hidden; background: var(--night);
+  margin: 0; height: 100%; overflow: hidden; background: var(--night); word-break: keep-all; overflow-wrap: anywhere;
   font-family: var(--body); color: var(--cream);
   user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
 }
@@ -269,7 +269,7 @@ button:focus-visible { outline: 3px solid var(--lantern); outline-offset: 2px; }
 .lb-flow .ic-s { width: 14px; height: 14px; stroke: rgba(255, 244, 220, .6); }
 
 /* ───────── 오버레이 (확인 · 맛보기 · 레시피 북 · 결과) ───────── */
-.overlay { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(12, 12, 30, .55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.overlay { position: fixed; inset: 0; z-index: 35; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(12, 12, 30, .55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 .card { width: 100%; max-width: 460px; padding: 28px; border-radius: 24px; background: var(--paper); color: var(--ink); text-align: center; box-shadow: 0 24px 60px rgba(0, 0, 0, .45); }
 .card h2 { margin: 0 0 10px; font-family: var(--display); font-weight: 400; font-size: 30px; line-height: 1.15; text-wrap: balance; }
 .card p { margin: 6px 0; line-height: 1.6; }
@@ -306,7 +306,10 @@ button:focus-visible { outline: 3px solid var(--lantern); outline-offset: 2px; }
 .bk-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
 .bk-tabs button { padding: 8px 14px; border-radius: 99px; border: 1px solid rgba(43, 33, 24, .25); background: transparent; color: var(--ink); font-size: 14px; font-weight: 600; }
 .bk-tabs button.on { border-color: var(--ink); background: var(--ink); color: var(--cream); font-weight: 700; }
-#book-grid { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); align-content: start; gap: 12px; padding: 2px; }
+#book-grid { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); grid-auto-rows: max-content; align-content: start; gap: 12px; padding: 2px 6px 2px 2px; scrollbar-width: thin; scrollbar-color: #c9b48a transparent; }
+#book-grid::-webkit-scrollbar { width: 8px; }
+#book-grid::-webkit-scrollbar-thumb { background: #c9b48a; border-radius: 99px; }
+#book-grid::-webkit-scrollbar-track { background: transparent; }
 .rcard { display: flex; flex-direction: column; gap: 8px; padding: 13px 14px; border-radius: 16px; background: #fff; border: 2px solid #ead9b5; min-height: 112px; min-width: 0; }
 .rc-top { display: flex; justify-content: space-between; align-items: baseline; }
 .rc-no { font-size: 12px; font-weight: 700; color: #8a6a4c; font-variant-numeric: tabular-nums; }
