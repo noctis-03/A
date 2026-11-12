@@ -45,7 +45,6 @@ export const DEFAULTS = {
   oilPenalty: 0.6,
 
   // ── 레시피 연구 ──
-  tastesPerRound: 2,
   tasteBurntLimit: 0.15,
   amountPenalty: 0.12,
   orderPenalty: 0.1,
@@ -172,7 +171,6 @@ export const GROUPS: { name: string; items: [TuneKey, Meta][] }[] = [
   {
     name: '레시피 연구',
     items: [
-      ['tastesPerRound', { label: '회차당 맛보기 횟수', min: 1, max: 10, step: 1, int: true }],
       ['tasteBurntLimit', { label: '맛보기 가능한 탄 비율 최대', min: 0, max: 1, step: 0.01 }],
       ['amountPenalty', { label: '양(적게/기본/많이) 1단계 차이 감점', min: 0, max: 0.5, step: 0.01 }],
       ['orderPenalty', { label: '넣는 순서 1번 어긋남 감점', min: 0, max: 0.5, step: 0.01 }],

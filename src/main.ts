@@ -44,7 +44,6 @@ interface Save {
   phase: Phase;
   money: number;
   found: string[];
-  tastesLeft: number;
   best: number;
 }
 
@@ -88,7 +87,6 @@ class Game {
   round = 1;
   money = 0;
   found = new Set<string>();
-  tastesLeft = 2;
   best = 0;
 
   timeLeft = T.dayLength;
@@ -310,7 +308,6 @@ class Game {
       phase,
       money: this.money,
       found: [...this.found],
-      tastesLeft: this.tastesLeft,
       best: this.best,
     });
   }
@@ -357,8 +354,7 @@ class Game {
     this.money = 0;
     this.found = new Set();
     this.best = best;
-    this.tastesLeft = T.tastesPerRound;
-    this.startResearch(true);
+    this.startResearch();
   }
 
   private continueGame() {
@@ -367,19 +363,17 @@ class Game {
     this.round = s.round;
     this.money = s.money;
     this.found = new Set(s.found);
-    this.tastesLeft = s.tastesLeft;
     this.best = s.best ?? 0;
     if (s.phase === 'selling') this.startSelling();
-    else this.startResearch(false);
+    else this.startResearch();
   }
 
   // ───────────── 레시피 연구 ─────────────
 
-  private startResearch(fresh = true) {
+  private startResearch() {
     $('lobby').classList.add('hidden');
     this.clearStage();
     this.state = 'research';
-    if (fresh) this.tastesLeft = T.tastesPerRound;
     this.world.setPlace('home');
     this.setHudMode();
     this.save();
@@ -434,10 +428,6 @@ class Game {
       this.toast('재료를 넣고 볶아 주세요', '', 'bad');
       return;
     }
-    if (this.tastesLeft <= 0 && !this.tutorial) {
-      this.toast('이번 회차 맛보기를 다 썼어요', '장사하러 가서 다음 회차에 다시 연구해요', 'bad');
-      return;
-    }
     // 익힘 확인
     const under: IngId[] = [];
     const over: IngId[] = [];
@@ -479,10 +469,9 @@ class Game {
     const set = new Set(this.counts.keys());
     const hit = matchRecipe(set);
     if (hit && this.found.has(hit.id)) {
-      this.showTaste('😋', '이미 아는 맛이에요', `<b>${esc(hit.name)}</b>이에요. 맛보기 횟수는 그대로예요.`);
+      this.showTaste('😋', '이미 아는 맛이에요', `<b>${esc(hit.name)}</b>이에요.`);
       return;
     }
-    if (!this.tutorial) this.tastesLeft--;
     if (hit) {
       this.found.add(hit.id);
       this.save();
@@ -504,9 +493,8 @@ class Game {
 
   /** 아직 못 찾은 레시피 중 가장 가까운 것을 기준으로 반응한다 */
   private feedback(set: Set<IngId>) {
-    const left = `<p class="small">이번 회차 남은 맛보기 ${this.tutorial ? '∞' : `${this.tastesLeft}번`}</p>`;
     const pool = RECIPES.filter((r) => !this.found.has(r.id) && recipeIngs(r).every((id) => this.isUnlocked(id)));
-    if (!pool.length) return `<p>지금 재료로 찾을 수 있는 레시피는 다 찾았어요. 장사를 마치면 새 재료가 열려요.</p>${left}`;
+    if (!pool.length) return `<p>지금 재료로 찾을 수 있는 레시피는 다 찾았어요. 장사를 마치면 새 재료가 열려요.</p>`;
     let best = pool[0];
     let bestScore = -Infinity;
     for (const r of pool) {
@@ -527,7 +515,7 @@ class Game {
     else lines.push(`넣은 재료 중 <b>${match}가지</b>는 잘 어울려요.`);
     if (match > 0 && extra > 0) lines.push(`<b>${extra}가지</b>는 안 어울리는 것 같아요.`);
     if (match > 0 && missing > 0) lines.push(`뭔가 <b>${missing}가지</b>가 더 필요해요.`);
-    return `<p>${lines.join('<br>')}</p>${left}`;
+    return `<p>${lines.join('<br>')}</p>`;
   }
 
   private showTaste(icon: string, title: string, html: string, clear = false) {
@@ -599,7 +587,7 @@ class Game {
   }
 
   trash() {
-    if (!this.active || this.stats.live === 0) return;
+    if (!this.active || (this.stats.live === 0 && this.oilMl <= 0.05)) return;
     this.particles.clearLive();
     this.resetDish();
     this.sfx.play('whoosh', 0.5);
@@ -784,7 +772,6 @@ class Game {
     const before = this.unlocked;
     const day = this.round;
     this.round++;
-    this.tastesLeft = T.tastesPerRound;
     const newIng = this.unlocked > before ? INGREDIENTS[this.unlocked - 1] : null;
     // 다음 회차 연구부터 이어서 할 수 있게 저장
     writeSave({
@@ -793,7 +780,6 @@ class Game {
       phase: 'research',
       money: this.money,
       found: [...this.found],
-      tastesLeft: this.tastesLeft,
       best: this.best,
     });
     $('end-title').textContent = `${day}일차 장사 마감`;
@@ -818,7 +804,7 @@ class Game {
     const n = Math.max(1, this.dishTotal);
     const f = (v: number, d = 2) => v.toFixed(d);
     const lines = [
-      `상태       ${this.state} · ${this.round}회차 · 맛보기 ${this.tastesLeft}`,
+      `상태       ${this.state} · ${this.round}회차`,
       `재료 조각  ${s.live} / ${this.dishTotal}`,
       `탄 비율    ${f(s.burntFrac * 100, 0)}%`,
       `웍질 누적  조각당 ${f((this.particles.tossSum / n) * 100, 1)}cm  → ${f(this.tossFrac() * 100, 0)}%`,
@@ -1003,14 +989,9 @@ class Game {
 
     // 연구 패널
     if (research) {
-      const total = T.tastesPerRound;
-      const dots = this.tutorial
-        ? '∞'
-        : Array.from({ length: total }, (_, i) => `<i class="${i < this.tastesLeft ? 'on' : ''}"></i>`).join('');
-      this.setHtml('taste-dots', dots);
       $('found-count').textContent = `${this.found.size} / ${RECIPES.length}`;
       const tb = $<HTMLButtonElement>('taste-btn');
-      tb.disabled = s.live < 8 || (this.tastesLeft <= 0 && !this.tutorial);
+      tb.disabled = s.live < 8;
       $<HTMLButtonElement>('go-sell').disabled = this.tutorial;
     }
 
@@ -1045,7 +1026,7 @@ class Game {
       b.classList.toggle('need', !!want && n < want[1]);
     }
     $<HTMLButtonElement>('serve').disabled = !waiting || s.live < 8;
-    $<HTMLButtonElement>('trash').disabled = s.live === 0;
+    $<HTMLButtonElement>('trash').disabled = s.live === 0 && this.oilMl <= 0.05;
 
     // 재료별 익힘 게이지
     const has = s.live > 0;
