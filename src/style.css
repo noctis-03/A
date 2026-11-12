@@ -264,7 +264,8 @@ body.dbg-open #dbg-toggle { display: none; }
 #wipe .wipe-sub { font-size: 16px; opacity: .8; margin-bottom: 22px; }
 #wipe .wipe-bar { width: min(260px, 60vw); height: 6px; border-radius: 99px; background: rgba(255,255,255,.15); overflow: hidden; }
 #wipe .wipe-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--w1), var(--w2)); border-radius: 99px; }
-#wipe .wipe-tip { font-size: 13px; margin-top: 12px; opacity: .7; }
+#wipe .wipe-tip { font-size: 15px; font-weight: 700; margin-top: 16px; opacity: .85; max-width: 90%; text-wrap: balance; }
+#wipe .wipe-tip small { display: block; font-size: 12px; font-weight: 500; opacity: .7; margin-top: 3px; letter-spacing: .05em; }
 #wipe.hold .wipe-icon { animation: popIcon .55s cubic-bezier(.2,1.6,.4,1) forwards; }
 #wipe.hold .wipe-kicker { animation: rise .4s cubic-bezier(.2,.9,.3,1) .06s forwards; }
 #wipe.hold .wipe-title { animation: rise .45s cubic-bezier(.2,.9,.3,1) .12s forwards; }

@@ -56,6 +56,7 @@ npm run build    # dist/ 로 빌드 (상대 경로라 Electron / Capacitor 에 �
 | `src/tuning.ts` | 밸런스 수치 기본값과 디버그 패널 항목 정의 |
 | `src/debug.ts` | 디버그 패널 (수치 조절 · 복사 · 붙여넣기) |
 | `src/oil.ts` | 기름통 (들고 흔들면 기름방울), 웍에 들어간 기름 양 |
+| `src/tips.ts` | 로딩창 팁 문구 목록 (속담 · 사자성어, 무작위 표시) |
 | `src/transition.ts` | 화면 전환 로딩창 (사선 패널 쓸기 · 제목 · 로딩 바 · 재료 띠) |
 | `src/look.ts` | 카툰 셰이딩·외곽선 변환, 블룸 후처리, 웍질 불길·불티 효과 |
 | `src/customers.ts` | 손님 모델과 행동 |

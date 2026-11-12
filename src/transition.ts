@@ -3,6 +3,8 @@
  * 사선 패널 3장이 차례로 쓸고 들어와 화면을 덮고 → 그 사이에 장면을 바꾸고 →
  * 제목·로딩 바·재료 띠가 움직이다가 → 패널이 반대쪽으로 빠지며 새 화면이 드러난다.
  */
+import { randomTip } from './tips';
+
 export type WipeKind = 'research' | 'selling' | 'result' | 'lobby';
 
 export interface WipeInfo {
@@ -12,23 +14,6 @@ export interface WipeInfo {
   title: string;
   sub?: string;
 }
-
-const TIPS: Record<WipeKind, string[]> = {
-  research: [
-    '기름부터 두르고, 느리게 익는 재료부터 넣어요',
-    '대파를 먼저 볶아 파기름을 내 보세요',
-    '모든 재료가 초록 구간에 와야 맛볼 수 있어요',
-    '맛보기 반응으로 빠진 재료를 추리해 보세요',
-  ],
-  selling: [
-    '주문서의 순서와 양대로 넣으면 별점이 올라가요',
-    '재료를 높이 띄울수록 웍질 보너스!',
-    '기름이 모자라면 재료가 눌어붙어요',
-    '손님이 기다리다 지치기 전에 내놓으세요',
-  ],
-  result: ['오늘도 수고했어요', '내일은 새 재료가 기다려요'],
-  lobby: ['불맛 볶음밥 푸드트럭', '레시피 연구 → 장사 → 결과'],
-};
 
 const TICKER = '🍚 🌿 🥚 🌶️ 🍖 🧅 🥕 🍤 🥓 🧀 🔥 ';
 
@@ -74,8 +59,15 @@ export class Wipe {
     el.querySelector('.wipe-kicker')!.textContent = info.kicker;
     el.querySelector('.wipe-title')!.textContent = info.title;
     el.querySelector('.wipe-sub')!.textContent = info.sub ?? '';
-    const tips = TIPS[info.kind];
-    el.querySelector('.wipe-tip')!.textContent = tips[Math.floor(Math.random() * tips.length)];
+    // 팁 문구 (명언) 무작위
+    const tip = randomTip();
+    const tipEl = el.querySelector('.wipe-tip')!;
+    tipEl.textContent = `“${tip.text}”`;
+    if (tip.from) {
+      const src = document.createElement('small');
+      src.textContent = `— ${tip.from}`;
+      tipEl.appendChild(src);
+    }
     el.style.setProperty('--hold', `${HOLD}ms`);
     el.className = `wipe-${info.kind}${this.reduced ? ' reduced' : ''}`;
     void el.offsetWidth;
