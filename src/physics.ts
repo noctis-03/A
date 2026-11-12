@@ -178,6 +178,9 @@ export class Particles {
     const dry = clamp01(1 - this.oilRatio);
     const FRICTION = T.friction * (1 + T.oilDryFriction * dry) * (this.oilRatio > 1 ? Math.max(0.6, 1 - (this.oilRatio - 1) * 0.3) : 1);
     const burnStart = T.burnStart - T.oilDryBurn * dry;
+    // 기름이 기준보다 적으면 웍 바닥에 눌어붙는다: 1 이면 완전히 붙어서 웍과 함께만 움직인다
+    const stick = T.oilStickBelow > 0 ? clamp01(1 - this.oilRatio / T.oilStickBelow) : 0;
+    const glueGap = stick * 0.012;
     const STICK = T.stickiness;
     const COOK_RATE = T.cookRate;
     const TOSS_MIN = T.tossMin;
@@ -267,7 +270,7 @@ export class Particles {
         const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
         const inside = ly < H + 0.06 && dx * dx + dz * dz < rim * rim;
 
-        if (ly < H && dist > R - ri && dist < R + 0.035) {
+        if (ly < H && dist > R - ri - glueGap && dist < R + 0.035) {
           touched = true;
           const s = (R - ri) / dist;
           lx = dx * s;
@@ -317,6 +320,13 @@ export class Particles {
             this.wy[i] = (nz * rx - nx * rz) * inv;
             this.wz[i] = (nx * ry - ny * rx) * inv;
           }
+          // 눌어붙음: 웍 표면에 대한 상대 속도를 없앤다 (튀어 오르지 못함)
+          if (stick > 0) {
+            const keep = 1 - stick;
+            rx *= keep;
+            ry *= keep;
+            rz *= keep;
+          }
           vx[i] = sx + rx;
           vy[i] = sy + ry;
           vz[i] = sz + rz;
@@ -338,6 +348,16 @@ export class Particles {
         } else if (inside) {
           // 다른 재료 위에 얹혀 있음 → 천천히 익는다
           this.cook[i] += COOK_RATE * speed[this.type[i]] * T.cookPileFactor * heat * h;
+          // 눌어붙은 덩어리 위의 재료도 웍과 함께 움직인다 (떡져서 뜨지 않음)
+          if (stick > 0) {
+            const pvx = (x - (mp[0] * lx + mp[4] * ly + mp[8] * lz + mp[12])) / h;
+            const pvy = (y - (mp[1] * lx + mp[5] * ly + mp[9] * lz + mp[13])) / h;
+            const pvz = (z - (mp[2] * lx + mp[6] * ly + mp[10] * lz + mp[14])) / h;
+            const k = Math.min(1, stick * 30 * h);
+            vx[i] += (pvx - vx[i]) * k;
+            vz[i] += (pvz - vz[i]) * k;
+            if (vy[i] > pvy) vy[i] += (pvy - vy[i]) * k;
+          }
         }
         if (this.cook[i] > burnStart) this.burn[i] += T.burnRate * h * heat;
       }

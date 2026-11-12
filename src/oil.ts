@@ -46,7 +46,7 @@ export class OilBottle {
 
   constructor(scene: THREE.Scene) {
     // 몸통: 노란 기름이 비치는 병 + 라벨 + 빨간 뚜껑
-    const glass = toonMat(0xf0c64a, { transparent: true, opacity: 0.92 });
+    const glass = toonMat(0xe8b23a);
     const bodyMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.19, 18), glass);
     bodyMesh.position.y = 0.095;
     const shoulder = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.045, 0.05, 18), glass);

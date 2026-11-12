@@ -707,13 +707,9 @@ class Game {
     return { quality, stars, pay, tip, toss, tossPay, comment };
   }
 
-  /** 재료 양에 맞는 적정 기름 대비 지금 기름 비율 (1 = 적정) */
+  /** 적정 기름(모든 레시피 공통) 대비 지금 기름 비율 (1 = 적정) */
   private oilRatio() {
-    let portions = 0;
-    for (const n of this.counts.values()) portions += n;
-    const ideal = portions * T.oilPerPortion;
-    if (ideal <= 0) return this.oilMl > 0 ? 1 : 0;
-    return this.oilMl / ideal;
+    return this.oilMl / Math.max(0.01, T.oilIdeal);
   }
 
   /** 웍질 보너스 (1 = 100%, 상한 없음): 조각당 누적 떠오른 높이 기준 */
@@ -937,7 +933,7 @@ class Game {
       this.oil.landed = 0;
       this.wok.setOil(this.oilMl);
     }
-    this.particles.oilRatio = this.counts.size ? this.oilRatio() : 1;
+    this.particles.oilRatio = this.oilRatio();
 
     this.stats = this.particles.stats();
     this.types = this.particles.typeStats();
@@ -1086,11 +1082,11 @@ class Game {
     $('cook-text').textContent = label;
     const or = this.oilRatio();
     $('oil-text').textContent = this.oilMl > 0.05 || this.counts.size
-      ? `${Math.round(this.oilMl)}ml · ${!this.counts.size ? '-' : or < T.oilMin ? '적음' : or > T.oilMax ? '많음' : '적당'}`
+      ? `${Math.round(this.oilMl)}ml · ${or < T.oilMin ? '적음' : or > T.oilMax ? '많음' : '적당'}`
       : '-';
     gauge.style.setProperty('--ol', `${clamp(T.oilMin / 2, 0, 1) * 100}%`);
     gauge.style.setProperty('--ow', `${clamp((T.oilMax - T.oilMin) / 2, 0, 1) * 100}%`);
-    $('oil-fill').style.width = `${this.counts.size ? clamp(or / 2, 0, 1) * 100 : this.oilMl > 0 ? 10 : 0}%`;
+    $('oil-fill').style.width = `${clamp(or / 2, 0, 1) * 100}%`;
     $('amount').textContent = has && this.dishTotal ? `${Math.round((s.live / this.dishTotal) * 100)}%` : '-';
     $('burnt').textContent = has ? `${Math.round(s.burntFrac * 100)}%` : '-';
     const toss = has ? this.tossFrac() : 0;

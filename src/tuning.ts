@@ -33,7 +33,8 @@ export const DEFAULTS = {
   speedCheese: 2.5,
 
   // ── 기름 ──
-  oilPerPortion: 6,
+  oilIdeal: 30,
+  oilStickBelow: 0.5,
   oilMin: 0.7,
   oilMax: 1.4,
   oilFlow: 40,
@@ -156,7 +157,8 @@ export const GROUPS: { name: string; items: [TuneKey, Meta][] }[] = [
   {
     name: '기름',
     items: [
-      ['oilPerPortion', { label: '재료 한 줌당 적정 기름 (ml)', min: 0, max: 20, step: 0.5 }],
+      ['oilIdeal', { label: '적정 기름 양 (ml, 모든 레시피 공통)', min: 1, max: 120, step: 1 }],
+      ['oilStickBelow', { label: '이 비율보다 적으면 눌어붙어 안 뜸', min: 0, max: 1.5, step: 0.05 }],
       ['oilMin', { label: '적정량 최소 (적정 대비 비율)', min: 0, max: 1.5, step: 0.05 }],
       ['oilMax', { label: '적정량 최대 (적정 대비 비율)', min: 0.5, max: 3, step: 0.05 }],
       ['oilFlow', { label: '흔들 때 나오는 양 (방울/초, 최대)', min: 1, max: 150, step: 1 }],
