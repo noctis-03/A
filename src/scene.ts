@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { enableShadows, toonify } from './look';
 import { T } from './tuning';
 import { buildBins } from './bins';
+import { buildHangang } from './hangang';
 
 function box(
   parent: THREE.Object3D,
@@ -225,26 +226,6 @@ const enamel: Draw = (c, w, h) => {
     c.beginPath();
     c.ellipse(Math.random() * w, Math.random() * h, rand(4, 18), rand(3, 12), Math.random() * 3, 0, Math.PI * 2);
     c.fill();
-  }
-};
-
-/** 아스팔트 */
-const asphalt: Draw = (c, w, h) => {
-  c.fillStyle = '#ffffff';
-  c.fillRect(0, 0, w, h);
-  speckle(c, w, h, 6000, 2, 0.25);
-  c.strokeStyle = 'rgba(0,0,0,0.25)';
-  for (let i = 0; i < 6; i++) {
-    let x = Math.random() * w;
-    let y = Math.random() * h;
-    c.beginPath();
-    c.moveTo(x, y);
-    for (let k = 0; k < 8; k++) {
-      x += rand(-14, 14);
-      y += rand(-14, 14);
-      c.lineTo(x, y);
-    }
-    c.stroke();
   }
 };
 
@@ -501,102 +482,8 @@ export function buildWorld(): World {
   menu.rotation.y = Math.PI / 2;
   truck.add(menu);
 
-  // ── 바깥 풍경 ──
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(80, 60), textured(0x2e3242, surface(256, 256, asphalt, [30, 22]), 1, 0, 0.5));
-  ground.rotation.x = -Math.PI / 2;
-  ground.position.set(0, -0.25, -28);
-  truck.add(ground);
-  box(truck, 80, 0.06, 3.2, textured(0x5a5866, surface(256, 256, asphalt, [40, 1.6]), 1, 0, 0.5), 0, -0.23, -2.7); // 보도
-  for (let i = -6; i <= 6; i++) box(truck, 1.6, 0.01, 0.16, std(0xb8b49a, 1), i * 3.4, -0.24, -7.5); // 차선
-
-  // 건물: 꺼진 창은 어둡게, 켜진 창만 스스로 빛난다
-  const lit: boolean[] = [];
-  for (let i = 0; i < 32; i++) lit.push(Math.random() < 0.35);
-  const winTex = canvasTexture(128, 256, (c) => {
-    c.fillStyle = '#ffffff';
-    c.fillRect(0, 0, 128, 256);
-    for (let y = 0; y < 8; y++)
-      for (let x = 0; x < 4; x++) {
-        c.fillStyle = lit[y * 4 + x] ? '#ffd890' : '#3a4560';
-        c.fillRect(8 + x * 30, 10 + y * 30, 22, 20);
-      }
-  });
-  const winGlow = canvasTexture(128, 256, (c) => {
-    c.fillStyle = '#000000';
-    c.fillRect(0, 0, 128, 256);
-    for (let y = 0; y < 8; y++)
-      for (let x = 0; x < 4; x++) {
-        if (!lit[y * 4 + x]) continue;
-        c.fillStyle = x % 3 ? '#ffc870' : '#ffe2a8';
-        c.fillRect(8 + x * 30, 10 + y * 30, 22, 20);
-      }
-  });
-  const palette = [0x4a3f5c, 0x3b4a63, 0x5a4048, 0x34485a, 0x4d4a3e, 0x3f3550];
-  let bx = -22;
-  let k = 0;
-  while (bx < 22) {
-    const w = 3 + Math.random() * 3;
-    const h = 4 + Math.random() * 8;
-    const mat = new THREE.MeshStandardMaterial({
-      color: palette[k++ % palette.length],
-      map: winTex,
-      emissive: 0xffffff,
-      emissiveMap: winGlow,
-      emissiveIntensity: 0.9,
-      roughness: 0.9,
-    });
-    box(truck, w, h, 4, mat, bx + w / 2, h / 2 - 0.25, -14 - Math.random() * 2);
-    bx += w + 0.3;
-  }
-
-  // 길 건너 네온 간판
-  const neon = (text: string, color: string, w: number, h: number) => {
-    const tex = canvasTexture(512, 192, (c) => {
-      c.fillStyle = '#120b18';
-      c.fillRect(0, 0, 512, 192);
-      c.strokeStyle = color;
-      c.lineWidth = 8;
-      c.strokeRect(14, 14, 484, 164);
-      c.font = 'bold 108px sans-serif';
-      c.textAlign = 'center';
-      c.textBaseline = 'middle';
-      c.fillStyle = '#ffffff';
-      c.shadowColor = color;
-      c.shadowBlur = 24;
-      c.fillText(text, 256, 100);
-    });
-    const m = new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(2.2, 2.2, 2.2) });
-    return new THREE.Mesh(new THREE.PlaneGeometry(w, h), m);
-  };
-  const sign1 = neon('포장마차', '#ff4fa0', 3.2, 1.2);
-  sign1.position.set(-5.5, 4.2, -11.9);
-  const sign2 = neon('24시 국밥', '#46d6ff', 2.8, 1.05);
-  sign2.position.set(6.5, 3.4, -11.9);
-  truck.add(sign1, sign2);
-
-  // 가로등
-  const poleM = std(0x23252c, 0.6, 0.5);
-  const lampM = new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 2.3, 1.3) });
-  for (const lx of [-4.2, 4.6]) {
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 3.6, 16), poleM);
-    pole.position.set(lx, 1.55, -3.9);
-    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.16, 24, 12), lampM);
-    lamp.position.set(lx, 3.4, -3.9);
-    const light = new THREE.PointLight(0xffc98a, 2, 7, 1.5);
-    light.position.set(lx, 3.2, -3.9);
-    truck.add(pole, lamp, light);
-  }
-
-  const trunkM = std(0x3a2a20, 1);
-  const leafM = std(0x24453a, 1);
-  for (const tx of [-5.5, -2.6, 2.9, 6.2]) {
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 1.6, 14), trunkM);
-    trunk.position.set(tx, 0.55, -4.0);
-    const leaf = new THREE.Mesh(new THREE.IcosahedronGeometry(0.85, 1), leafM);
-    leaf.position.set(tx, 1.9, -4.0);
-    leaf.scale.y = 1.15;
-    truck.add(trunk, leaf);
-  }
+  // ── 바깥 풍경: 한강 둔치의 밤 (hangang.ts) ──
+  const river = buildHangang(truck);
 
   // ── 접시 (서빙 연출) ──
   const plate = new THREE.Group();
@@ -614,20 +501,26 @@ export function buildWorld(): World {
   const home = buildHome();
   scene.add(home);
   toonify(scene);
-  // 바깥 풍경(땅·건물)은 그림자 범위 밖이라 드리울 필요가 없다
-  ground.userData.noShadow = true;
   enableShadows(scene);
 
   const setPlace = (p: Place) => {
     truck.visible = p === 'truck';
     home.visible = p === 'home';
-    const bg = p === 'truck' ? 0x0b1026 : 0x1a1420;
+    // 한강: 강 건너 도시가 보이도록 안개를 멀리, 수평선 쪽 남보라로
+    const bg = p === 'truck' ? 0x1a2150 : 0x1a1420;
     (scene.background as THREE.Color).setHex(bg);
-    scene.fog!.color.setHex(bg);
+    const fog = scene.fog as THREE.Fog;
+    fog.color.setHex(bg);
+    fog.near = p === 'truck' ? 16 : 9;
+    fog.far = p === 'truck' ? 75 : 30;
   };
   setPlace('home');
+  let lastT = 0;
   const tick = (t: number) => {
+    const dt = Math.min(0.1, Math.max(0, t - lastT));
+    lastT = t;
     home.userData.tick(t, T.lightShaft);
+    if (truck.visible) river.tick(t, dt);
   };
   return { scene, setPlace, flames, fireLight, keyLight, keyBase: keyLight.intensity, plate, plateFood, tick, setUnlocked: bins.setUnlocked };
 }
