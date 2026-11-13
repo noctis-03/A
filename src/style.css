@@ -386,6 +386,8 @@ button:focus-visible { outline: 3px solid var(--lantern); outline-offset: 2px; }
   #book-btn .bb-text { display: none; }
   .icon-btn { width: 44px; height: 44px; }
   #home-btn { display: none; }
+  /* 좁은 화면에서는 상단 줄이 넘치므로 품질 버튼은 로비에만 둔다 */
+  #quality { display: none; }
   #ticket { left: 12px; right: 12px; top: 64px; width: auto; }
   .tk-clip { display: none; }
   .tk-paper { padding: 12px 14px; gap: 8px; border-radius: 16px; }
