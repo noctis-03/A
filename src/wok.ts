@@ -102,6 +102,7 @@ export class Wok {
     this.pitch += (pt - this.pitch) * k;
     this.roll += (rt - this.roll) * k;
     this.updateMatrix();
+    for (const { m, base } of this.metals) m.envMapIntensity = base * T.wokShine;
   }
 
   private updateMatrix() {
@@ -113,27 +114,47 @@ export class Wok {
     this.group.matrix.copy(this.matrix);
   }
 
+  /** 반사(환경맵)를 받는 금속 재질들 */
+  private metals: { m: THREE.MeshStandardMaterial; base: number }[] = [];
+
+  /** 주방 환경맵을 금속 재질에 건다 */
+  setEnvMap(tex: THREE.Texture) {
+    for (const { m } of this.metals) {
+      m.envMap = tex;
+      m.needsUpdate = true;
+    }
+  }
+
+  private metal(params: THREE.MeshStandardMaterialParameters, shine: number) {
+    const m = new THREE.MeshStandardMaterial(params);
+    m.userData.keepPbr = true;
+    this.metals.push({ m, base: shine });
+    return m;
+  }
+
   private buildMesh() {
     const { R, H } = this;
     const tMax = Math.acos((R - H) / R);
     const pts: THREE.Vector2[] = [];
-    const N = 22;
+    const N = 36;
     for (let i = 0; i <= N; i++) {
       const t = (i / N) * tMax;
       pts.push(new THREE.Vector2(Math.max(0.0001, R * Math.sin(t)), R - R * Math.cos(t)));
     }
+    const { color, rough } = wokTextures();
+    // 안쪽: 길들인 탄소강. 바닥은 검게 그을리고 림 쪽으로 갈수록 강철색, 동심원 연마 자국
     const inner = new THREE.Mesh(
-      new THREE.LatheGeometry(pts, 48),
-      new THREE.MeshStandardMaterial({ color: 0x2b2c31, metalness: 0.85, roughness: 0.42, side: THREE.BackSide }),
+      new THREE.LatheGeometry(pts, 96),
+      this.metal({ color: 0xffffff, map: color, roughnessMap: rough, metalness: 0.85, roughness: 1, side: THREE.BackSide }, 0.55),
     );
     const outerPts = pts.map((p) => new THREE.Vector2(p.x + 0.004, p.y - 0.004));
     const outer = new THREE.Mesh(
-      new THREE.LatheGeometry(outerPts, 48),
-      new THREE.MeshStandardMaterial({ color: 0x17171a, metalness: 0.7, roughness: 0.6, side: THREE.FrontSide }),
+      new THREE.LatheGeometry(outerPts, 96),
+      this.metal({ color: 0x1c1a1a, metalness: 0.75, roughness: 0.55, side: THREE.FrontSide }, 0.7),
     );
     const rim = new THREE.Mesh(
-      new THREE.TorusGeometry(this.rimR + 0.002, 0.006, 8, 64),
-      new THREE.MeshStandardMaterial({ color: 0x55575e, metalness: 0.9, roughness: 0.3 }),
+      new THREE.TorusGeometry(this.rimR + 0.002, 0.006, 12, 128),
+      this.metal({ color: 0x8a8d94, metalness: 1, roughness: 0.25 }, 1.2),
     );
     rim.rotation.x = Math.PI / 2;
     rim.position.y = H;
@@ -141,13 +162,13 @@ export class Wok {
     // 손잡이 (플레이어 쪽, +z)
     const handle = new THREE.Group();
     const neck = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.011, 0.014, 0.08, 10),
-      new THREE.MeshStandardMaterial({ color: 0x3a3b40, metalness: 0.8, roughness: 0.4 }),
+      new THREE.CylinderGeometry(0.011, 0.014, 0.08, 20),
+      this.metal({ color: 0x6a6c72, metalness: 1, roughness: 0.3 }, 1),
     );
     neck.rotation.x = Math.PI / 2;
     neck.position.z = 0.04;
     const grip = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.017, 0.015, 0.2, 12),
+      new THREE.CylinderGeometry(0.017, 0.015, 0.2, 24),
       new THREE.MeshStandardMaterial({ color: 0x7a4a26, roughness: 0.75 }),
     );
     grip.rotation.x = Math.PI / 2;
@@ -165,4 +186,53 @@ export class Wok {
     this.oilSheen.visible = false;
     this.group.add(this.oilSheen);
   }
+}
+
+/**
+ * 웍 안쪽 텍스처. LatheGeometry 의 v 는 바닥(0) → 림(1) 이라
+ * 세로 방향 그라디언트 = 동심원 무늬가 된다.
+ */
+function wokTextures() {
+  const H = 512;
+  const mk = (draw: (c: CanvasRenderingContext2D) => void, srgb: boolean) => {
+    const cv = document.createElement('canvas');
+    cv.width = 4;
+    cv.height = H;
+    draw(cv.getContext('2d')!);
+    const t = new THREE.CanvasTexture(cv);
+    if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 4;
+    return t;
+  };
+  // 캔버스 y=0 이 텍스처 v=1(림) 쪽이다
+  const color = mk((c) => {
+    const g = c.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#6c6e74'); // 림: 밝은 강철
+    g.addColorStop(0.25, '#4a4c52');
+    g.addColorStop(0.5, '#3a3436'); // 열에 그을린 갈색 띠
+    g.addColorStop(0.68, '#2c2a32'); // 푸르스름한 열변색
+    g.addColorStop(1, '#151416'); // 바닥: 검게 길들인 부분
+    c.fillStyle = g;
+    c.fillRect(0, 0, 4, H);
+    // 가는 동심원 결
+    for (let y = 0; y < H; y += 2) {
+      c.fillStyle = `rgba(${Math.random() < 0.5 ? '255,255,255' : '0,0,0'},${Math.random() * 0.06})`;
+      c.fillRect(0, y, 4, 1 + Math.round(Math.random()));
+    }
+  }, true);
+  const rough = mk((c) => {
+    // 거칠기는 G 채널을 쓴다. 바닥은 기름막으로 매끈, 림 쪽은 연마 자국으로 조금 거칠다
+    const g = c.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, 'rgb(0,150,0)');
+    g.addColorStop(0.6, 'rgb(0,125,0)');
+    g.addColorStop(1, 'rgb(0,100,0)');
+    c.fillStyle = g;
+    c.fillRect(0, 0, 4, H);
+    for (let y = 0; y < H; y += 3) {
+      const v = Math.round(Math.random() * 60);
+      c.fillStyle = `rgba(0,${Math.random() < 0.5 ? 255 : 0},0,${v / 255})`;
+      c.fillRect(0, y, 4, 1);
+    }
+  }, false);
+  return { color, rough };
 }

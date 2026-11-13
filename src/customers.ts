@@ -39,24 +39,24 @@ export class Customer {
     const skin = new THREE.MeshStandardMaterial({ color: pick(SKIN), roughness: 0.8 });
     const hair = new THREE.MeshStandardMaterial({ color: pick(HAIR), roughness: 0.9 });
 
-    const legs = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.13, 0.75, 12), new THREE.MeshStandardMaterial({ color: 0x33384a, roughness: 0.9 }));
+    const legs = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.13, 0.75, 24), new THREE.MeshStandardMaterial({ color: 0x33384a, roughness: 0.9 }));
     legs.position.y = 0.375;
-    this.body = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.42, 6, 14), shirt);
+    this.body = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.42, 8, 28), shirt);
     this.body.position.y = 1.05;
 
     this.headMesh = new THREE.Group();
-    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.155, 20, 16), skin);
-    const hairCap = new THREE.Mesh(new THREE.SphereGeometry(0.165, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.55), hair);
+    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.155, 36, 24), skin);
+    const hairCap = new THREE.Mesh(new THREE.SphereGeometry(0.165, 36, 16, 0, Math.PI * 2, 0, Math.PI * 0.55), hair);
     hairCap.rotation.x = -0.25;
     this.headMesh.add(skull, hairCap);
     const eyeM = new THREE.MeshBasicMaterial({ color: 0x1b1b1f });
     for (const sx of [-1, 1]) {
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.018, 8, 8), eyeM);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.018, 14, 10), eyeM);
       eye.position.set(sx * 0.055, 0.015, 0.145);
       this.headMesh.add(eye);
     }
     if (Math.random() < 0.3) {
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.172, 0.12, 16), shirt);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.172, 0.12, 32), shirt);
       cap.position.y = 0.125;
       const brim = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.015, 0.12), shirt);
       brim.position.set(0, 0.09, 0.2);
@@ -64,7 +64,7 @@ export class Customer {
     }
     this.headMesh.position.y = 1.52;
 
-    const armGeo = new THREE.CapsuleGeometry(0.055, 0.34, 4, 8).translate(0, -0.2, 0);
+    const armGeo = new THREE.CapsuleGeometry(0.055, 0.34, 6, 16).translate(0, -0.2, 0);
     const armL = new THREE.Mesh(armGeo, shirt);
     armL.position.set(-0.26, 1.28, 0);
     armL.rotation.z = -0.12;

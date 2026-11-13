@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { toonify } from './look';
+import { enableShadows, toonify } from './look';
 
 function box(
   parent: THREE.Object3D,
@@ -37,6 +37,9 @@ export interface World {
   setPlace: (p: Place) => void;
   flames: THREE.Mesh[];
   fireLight: THREE.PointLight;
+  /** 그림자를 드리우는 주 조명 (조리대 위 비스듬히) */
+  keyLight: THREE.SpotLight;
+  keyBase: number;
   plate: THREE.Group;
   plateFood: THREE.Mesh;
 }
@@ -47,14 +50,27 @@ export function buildWorld(): World {
   scene.background = new THREE.Color(0x0b1026);
   scene.fog = new THREE.Fog(0x0b1026, 9, 30);
 
-  scene.add(new THREE.HemisphereLight(0x8090d0, 0x2a1e24, 0.75));
+  scene.add(new THREE.HemisphereLight(0x8090d0, 0x2a1e24, 0.5));
+
+  // 그림자 조명: 왼쪽 위에서 조리대를 비스듬히 비춰 웍·병·그릇 그림자가 오른쪽으로 떨어진다
+  const keyLight = new THREE.SpotLight(0xffe2b8, 7.5, 0, 0.55, 0.45, 2);
+  keyLight.position.set(-1.15, 2.3, -0.05);
+  keyLight.target.position.set(0.15, 0.9, -0.35);
+  keyLight.castShadow = true;
+  keyLight.shadow.mapSize.set(1024, 1024);
+  keyLight.shadow.camera.near = 0.6;
+  keyLight.shadow.camera.far = 4.5;
+  keyLight.shadow.bias = -0.0004;
+  keyLight.shadow.normalBias = 0.012;
+  keyLight.shadow.radius = 3;
+  scene.add(keyLight, keyLight.target);
   // 장사(푸드트럭) 세트와 연구(집 주방) 세트. 화구·웍·접시는 둘이 함께 쓴다
   const truck = new THREE.Group();
   scene.add(truck);
   const moon = new THREE.DirectionalLight(0x9db4ff, 0.55);
   moon.position.set(4, 7, -6);
   truck.add(moon);
-  const inside = new THREE.PointLight(0xffc27a, 1.3, 5, 1.4);
+  const inside = new THREE.PointLight(0xffc27a, 0.9, 5, 1.4);
   inside.position.set(0, 2.05, 0.1);
   truck.add(inside);
   // 차양 아래 전구가 손님 쪽을 비춘다
@@ -109,7 +125,7 @@ export function buildWorld(): World {
 
   // 화구
   box(scene, 0.86, 0.035, 0.8, dark, 0, 0.915, -0.38);
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.145, 0.01, 8, 32), std(0x18181b, 0.5, 0.6));
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.145, 0.01, 12, 64), std(0x18181b, 0.5, 0.6));
   ring.rotation.x = Math.PI / 2;
   ring.position.set(0, 0.945, -0.38);
   scene.add(ring);
@@ -148,17 +164,17 @@ export function buildWorld(): World {
     const k = i < 4 ? i : i - 4;
     const x = side * (0.62 + (k % 2) * 0.3);
     const z = -0.2 - Math.floor(k / 2) * 0.32;
-    const bin = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.09, 0.09, 20, 1, true), steel);
+    const bin = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.09, 0.09, 40, 1, true), steel);
     bin.material.side = THREE.DoubleSide;
     bin.position.set(x, 0.945, z);
-    const fill = new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), std(c, 0.85));
+    const fill = new THREE.Mesh(new THREE.SphereGeometry(0.1, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2), std(c, 0.85));
     fill.scale.y = 0.45;
     fill.position.set(x, 0.95, z);
     truck.add(bin, fill);
   });
   // 소스병
   [0x3a2416, 0xc93a2a].forEach((c, i) => {
-    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.035, 0.2, 12), std(c, 0.3));
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.035, 0.2, 24), std(c, 0.3));
     b.position.set(1.2, 1.0, -0.75 + i * 0.12);
     truck.add(b);
   });
@@ -260,9 +276,9 @@ export function buildWorld(): World {
   const poleM = std(0x23252c, 0.6, 0.5);
   const lampM = new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 2.3, 1.3) });
   for (const lx of [-4.2, 4.6]) {
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 3.6, 8), poleM);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 3.6, 16), poleM);
     pole.position.set(lx, 1.55, -3.9);
-    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 8), lampM);
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.16, 24, 12), lampM);
     lamp.position.set(lx, 3.4, -3.9);
     const light = new THREE.PointLight(0xffc98a, 2, 7, 1.5);
     light.position.set(lx, 3.2, -3.9);
@@ -272,7 +288,7 @@ export function buildWorld(): World {
   const trunkM = std(0x3a2a20, 1);
   const leafM = std(0x24453a, 1);
   for (const tx of [-5.5, -2.6, 2.9, 6.2]) {
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 1.6, 8), trunkM);
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 1.6, 14), trunkM);
     trunk.position.set(tx, 0.55, -4.0);
     const leaf = new THREE.Mesh(new THREE.IcosahedronGeometry(0.85, 1), leafM);
     leaf.position.set(tx, 1.9, -4.0);
@@ -282,9 +298,9 @@ export function buildWorld(): World {
 
   // ── 접시 (서빙 연출) ──
   const plate = new THREE.Group();
-  const dish = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.1, 0.025, 28), std(0xfafafa, 0.35));
+  const dish = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.1, 0.025, 56), std(0xfafafa, 0.35));
   const plateFood = new THREE.Mesh(
-    new THREE.SphereGeometry(0.1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.SphereGeometry(0.1, 40, 14, 0, Math.PI * 2, 0, Math.PI / 2),
     std(0xe2b566, 0.9),
   );
   plateFood.scale.y = 0.6;
@@ -296,6 +312,9 @@ export function buildWorld(): World {
   const home = buildHome();
   scene.add(home);
   toonify(scene);
+  // 바깥 풍경(땅·건물)은 그림자 범위 밖이라 드리울 필요가 없다
+  ground.userData.noShadow = true;
+  enableShadows(scene);
 
   const setPlace = (p: Place) => {
     truck.visible = p === 'truck';
@@ -305,7 +324,7 @@ export function buildWorld(): World {
     scene.fog!.color.setHex(bg);
   };
   setPlace('home');
-  return { scene, setPlace, flames, fireLight, plate, plateFood };
+  return { scene, setPlace, flames, fireLight, keyLight, keyBase: keyLight.intensity, plate, plateFood };
 }
 
 // ───────────────────────── 집 주방 (레시피 연구) ─────────────────────────
@@ -313,7 +332,7 @@ export function buildWorld(): World {
 function buildHome(): THREE.Group {
   const g = new THREE.Group();
   // 따뜻한 저녁 주방: 타일 벽, 나무 상판, 레인지 후드, 창밖 저녁 하늘
-  const lamp = new THREE.PointLight(0xffd29a, 1.4, 6, 1.3);
+  const lamp = new THREE.PointLight(0xffd29a, 1.0, 6, 1.3);
   lamp.position.set(0, 2.15, -0.2);
   const hoodLight = new THREE.PointLight(0xfff0d0, 0.8, 1.6, 1.5);
   hoodLight.position.set(0, 1.6, -0.6);
@@ -389,25 +408,25 @@ function buildHome(): THREE.Group {
   // 선반 위 소품: 양념통, 냄비, 화분
   const jars = [0xc93a2a, 0x3a2416, 0xe8d9a8, 0x5a8a3a];
   jars.forEach((c, i) => {
-    const j = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.11, 12), std(c, 0.4));
+    const j = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.11, 24), std(c, 0.4));
     j.position.set(-1.25 + i * 0.1, 0.955, -0.85);
     g.add(j);
   });
-  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.12, 0.14, 20), std(0x9a3b2e, 0.5, 0.3));
+  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.12, 0.14, 40), std(0x9a3b2e, 0.5, 0.3));
   pot.position.set(-0.8, 0.97, -0.62);
   g.add(pot);
-  const potLid = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 6, 0, Math.PI * 2, 0, Math.PI / 4), std(0x7a2a20, 0.5, 0.3));
+  const potLid = new THREE.Mesh(new THREE.SphereGeometry(0.13, 32, 8, 0, Math.PI * 2, 0, Math.PI / 4), std(0x7a2a20, 0.5, 0.3));
   potLid.position.set(-0.8, 0.99, -0.62);
   g.add(potLid);
-  const plant = new THREE.Mesh(new THREE.IcosahedronGeometry(0.12, 1), std(0x4f9a5a, 1));
+  const plant = new THREE.Mesh(new THREE.IcosahedronGeometry(0.12, 2), std(0x4f9a5a, 1));
   plant.position.set(1.2, 1.42, -0.92);
-  const planter = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.06, 0.1, 12), std(0xc66a3c, 0.8));
+  const planter = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.06, 0.1, 24), std(0xc66a3c, 0.8));
   planter.position.set(1.2, 1.36, -0.92);
   g.add(plant, planter);
   // 도마
   box(g, 0.42, 0.025, 0.28, std(0xd9b27a, 0.8), 0.85, 0.91, -0.35);
   // 펜던트 조명
-  const shade = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.14, 16, 1, true), std(0x2f4a3e, 0.6));
+  const shade = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.14, 32, 1, true), std(0x2f4a3e, 0.6));
   shade.position.set(0, 2.32, -0.2);
   (shade.material as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
   const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 2.4, 1.4) }));

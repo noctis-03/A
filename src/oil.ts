@@ -47,15 +47,15 @@ export class OilBottle {
   constructor(scene: THREE.Scene) {
     // 몸통: 노란 기름이 비치는 병 + 라벨 + 빨간 뚜껑
     const glass = toonMat(0xf5d570, { transparent: true, opacity: 0.55, depthWrite: false });
-    const bodyMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.19, 18), glass);
+    const bodyMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.19, 32), glass);
     bodyMesh.position.y = 0.095;
-    const shoulder = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.045, 0.05, 18), glass);
+    const shoulder = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.045, 0.05, 32), glass);
     shoulder.position.y = 0.215;
-    const label = new THREE.Mesh(new THREE.CylinderGeometry(0.0505, 0.0515, 0.07, 18), toonMat(0x2f7a46));
+    const label = new THREE.Mesh(new THREE.CylinderGeometry(0.0505, 0.0515, 0.07, 32), toonMat(0x2f7a46));
     label.position.y = 0.08;
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.018, 0.035, 12), toonMat(0xd2402e));
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.018, 0.035, 24), toonMat(0xd2402e));
     cap.position.y = 0.255;
-    const nozzle = new THREE.Mesh(new THREE.ConeGeometry(0.008, 0.03, 8), toonMat(0xd2402e));
+    const nozzle = new THREE.Mesh(new THREE.ConeGeometry(0.008, 0.03, 16), toonMat(0xd2402e));
     nozzle.position.y = 0.285;
     // 투명한 병 몸통에는 외곽선을 달지 않는다 (안쪽 선이 비쳐 보여서)
     for (const mesh of [label, cap]) {

@@ -3,6 +3,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { T } from './tuning';
 
 // ───────────────────────── 카툰(셀) 셰이딩 ─────────────────────────
@@ -28,11 +29,14 @@ const converted = new WeakMap<THREE.Material, THREE.Material>();
 
 function toToon(m: THREE.Material): THREE.Material {
   if (!(m instanceof THREE.MeshStandardMaterial)) return m;
+  // 금속 웍처럼 반사가 중요한 재질은 PBR 로 남긴다
+  if (m.userData.keepPbr) return m;
   let t = converted.get(m);
   if (!t) {
     const color = m.color.clone();
     t = toonMat(color, {
       map: m.map,
+      normalMap: m.normalMap,
       emissive: m.emissive,
       emissiveMap: m.emissiveMap,
       emissiveIntensity: m.emissiveIntensity,
@@ -149,10 +153,85 @@ export function toonify(root: THREE.Object3D, outline = true) {
     const orig = mesh.material as THREE.Material;
     mesh.material = Array.isArray(mesh.material) ? mesh.material.map(toToon) : toToon(orig);
     if (!outline || !(orig instanceof THREE.MeshStandardMaterial) || orig.transparent) continue;
+    if (orig.userData.noOutline) continue;
     if (NO_OUTLINE.has(mesh.geometry.type) || (mesh as THREE.InstancedMesh).isInstancedMesh) continue;
     mesh.geometry.computeBoundingSphere();
     if ((mesh.geometry.boundingSphere?.radius ?? 0) > 1.2) continue;
     addOutline(mesh);
+  }
+}
+
+// ───────────────────────── 반사 환경맵 ─────────────────────────
+
+/**
+ * 금속(웍)이 비출 주방 환경. 어두운 방에 머리 위 백열등, 옆 창의 푸른 밤빛,
+ * 아래 화구의 주황 불빛을 HDR 판으로 두고 PMREM 으로 굽는다.
+ */
+export function makeKitchenEnv(renderer: THREE.WebGLRenderer) {
+  const env = new THREE.Scene();
+  const room = new THREE.Mesh(
+    new THREE.BoxGeometry(10, 10, 10),
+    new THREE.MeshBasicMaterial({ color: new THREE.Color(0.06, 0.05, 0.07), side: THREE.BackSide }),
+  );
+  env.add(room);
+  const panel = (w: number, h: number, c: THREE.Color, pos: THREE.Vector3Tuple, look: THREE.Vector3Tuple) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: c, side: THREE.DoubleSide }));
+    m.position.set(...pos);
+    m.lookAt(...look);
+    env.add(m);
+  };
+  panel(3.2, 3.2, new THREE.Color(7, 5, 3.2), [0, 4.9, 0], [0, 0, 0]); // 천장 백열등
+  panel(2.2, 1.2, new THREE.Color(1.6, 1.3, 1.0), [-1.5, 3.8, 2.5], [0, 0, 0]); // 앞쪽 보조등
+  panel(3.5, 2, new THREE.Color(0.35, 0.5, 1.2), [-4.9, 1.5, -1], [0, 1.5, -1]); // 옆 창 (밤빛)
+  panel(4.5, 1.2, new THREE.Color(1.1, 0.95, 0.8), [0, 1.2, -4.9], [0, 1.2, 0]); // 뒷벽 반사
+  panel(1.6, 1.6, new THREE.Color(5, 1.8, 0.4), [0, -4.9, 0], [0, 0, 0]); // 화구 불빛
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const tex = pmrem.fromScene(env, 0.035).texture;
+  pmrem.dispose();
+  env.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh) {
+      m.geometry.dispose();
+      (m.material as THREE.Material).dispose();
+    }
+  });
+  return tex;
+}
+
+// ───────────────────────── 그림자 ─────────────────────────
+
+/** 빛을 받는 불투명 물체인지 (외곽선 · 발광 · 투명 재질 제외) */
+function isSolid(o: THREE.Object3D): o is THREE.Mesh {
+  const mesh = o as THREE.Mesh;
+  if (!mesh.isMesh || o.name === 'outline' || o.userData.noShadow) return false;
+  const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  return mats.every((m) => m.visible && !m.transparent && !(m instanceof THREE.MeshBasicMaterial));
+}
+
+/** 하위의 불투명 물체가 그림자를 드리우고 받게 한다 */
+export function enableShadows(root: THREE.Object3D) {
+  root.traverse((o) => {
+    if (!isSolid(o)) return;
+    o.castShadow = true;
+    o.receiveShadow = true;
+  });
+}
+
+// ───────────────────────── 앰비언트 오클루전 ─────────────────────────
+
+/**
+ * GTAO: 물체가 맞닿는 구석·틈을 어둡게 해서 입체감을 준다.
+ * 노멀/깊이 패스에서 외곽선 · 반투명 · 스프라이트(불길·김)는 빼야
+ * 그 주위에 얼룩이 생기지 않는다.
+ */
+class SceneAOPass extends GTAOPass {
+  overrideVisibility() {
+    super.overrideVisibility();
+    this.scene.traverse((o) => {
+      if (!o.visible) return;
+      const m = (o as THREE.Mesh).material as THREE.Material | undefined;
+      if ((o as THREE.Sprite).isSprite || o.name === 'outline' || (m && !Array.isArray(m) && (m.transparent || !m.visible))) o.visible = false;
+    });
   }
 }
 
@@ -161,7 +240,9 @@ export function toonify(root: THREE.Object3D, outline = true) {
 export class Post {
   readonly composer: EffectComposer;
   readonly bloom: UnrealBloomPass;
+  readonly ao: SceneAOPass;
   private size = new THREE.Vector2();
+  private aoKey = '';
 
   constructor(private renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -170,6 +251,9 @@ export class Post {
     const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
     this.composer = new EffectComposer(renderer, rt);
     this.composer.addPass(new RenderPass(scene, camera));
+    this.ao = new SceneAOPass(scene, camera, 1, 1);
+    this.ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 8 });
+    this.composer.addPass(this.ao);
     this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.7, 0.5, 1.0);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
@@ -180,6 +264,8 @@ export class Post {
     this.composer.setSize(w, h);
     // 블룸은 절반 해상도로 충분하다
     this.bloom.resolution.set(w / 2, h / 2);
+    // AO 도 절반 해상도로 계산하고 디노이즈로 부드럽게 편다
+    this.ao.setSize(Math.round((w * ratio) / 2), Math.round((h * ratio) / 2));
   }
 
   render() {
@@ -192,6 +278,13 @@ export class Post {
     this.bloom.strength = T.bloomStrength;
     this.bloom.radius = T.bloomRadius;
     this.bloom.threshold = T.bloomThreshold;
+    this.ao.enabled = T.aoStrength > 0.001;
+    this.ao.blendIntensity = T.aoStrength;
+    const key = `${T.aoRadius}`;
+    if (key !== this.aoKey) {
+      this.aoKey = key;
+      this.ao.updateGtaoMaterial({ radius: T.aoRadius, distanceExponent: 1.5, thickness: T.aoRadius * 0.6, scale: 1, samples: 12 });
+    }
     this.composer.render();
   }
 }

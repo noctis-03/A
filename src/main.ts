@@ -17,7 +17,7 @@ import {
 import { ParticleRenderer, Particles, type DishStats, type TypeStat } from './physics';
 import { buildWorld, Steam } from './scene';
 import { Wok } from './wok';
-import { FireFx, Post, toonify } from './look';
+import { enableShadows, FireFx, makeKitchenEnv, Post, toonify } from './look';
 import { T, loadTuning } from './tuning';
 import { DebugPanel, isTyping } from './debug';
 import { OilBottle } from './oil';
@@ -151,8 +151,13 @@ class Game {
   constructor() {
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.wok.setEnvMap(makeKitchenEnv(this.renderer));
     this.post = new Post(this.renderer, this.world.scene, this.camera);
     this.world.scene.add(this.wok.group, this.particleView.group);
+    enableShadows(this.wok.group);
+    enableShadows(this.oil.group);
     this.resize();
     window.addEventListener('resize', () => this.resize());
     this.bindInput();
@@ -705,6 +710,7 @@ class Game {
       Math.max(T.patienceMin, T.patienceBase - this.round * T.patiencePerDay) + recipe.steps.length * T.patiencePerIng;
     this.customer = new Customer(this.world.scene, recipe, patience);
     toonify(this.customer.group);
+    enableShadows(this.customer.group);
     this.sfx.play('bell', 0.5);
   }
 
@@ -1322,6 +1328,9 @@ class Game {
     }
     if (n === 16) this.acc = 0;
     this.update(dt);
+    const key = this.world.keyLight;
+    key.castShadow = T.shadows > 0;
+    key.intensity = this.world.keyBase * T.keyLight;
     this.post.render();
   }
 }
