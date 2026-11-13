@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { enableShadows, toonify } from './look';
 import { T } from './tuning';
+import { buildBins } from './bins';
 
 function box(
   parent: THREE.Object3D,
@@ -353,6 +354,8 @@ export interface World {
   plateFood: THREE.Mesh;
   /** 매 프레임: 빛줄기 · 먼지 */
   tick: (t: number) => void;
+  /** 해금된 재료 수 → 트럭 재료 통 뚜껑 */
+  setUnlocked: (n: number) => void;
 }
 
 export function buildWorld(): World {
@@ -469,21 +472,8 @@ export function buildWorld(): World {
   fireLight.position.set(0, 0.9, -0.12);
   scene.add(fireLight);
 
-  // 재료 통 (장식)
-  const binColors = [0xf6f1e4, 0xffd84a, 0x58b54a, 0xff8a2a, 0xff9a7a, 0xe2452f, 0xf29a9a];
-  binColors.forEach((c, i) => {
-    const side = i < 4 ? -1 : 1;
-    const k = i < 4 ? i : i - 4;
-    const x = side * (0.62 + (k % 2) * 0.3);
-    const z = -0.2 - Math.floor(k / 2) * 0.32;
-    const bin = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.09, 0.09, 40, 1, true), steel);
-    bin.material.side = THREE.DoubleSide;
-    bin.position.set(x, 0.945, z);
-    const fill = new THREE.Mesh(new THREE.SphereGeometry(0.1, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2), std(c, 0.85));
-    fill.scale.y = 0.45;
-    fill.position.set(x, 0.95, z);
-    truck.add(bin, fill);
-  });
+  // 재료 통: 재료마다 하나, 안에 실제 조각이 쌓여 있고 안 열린 재료는 뚜껑이 덮여 있다
+  const bins = buildBins(truck, steel);
   // 소스병
   [0x3a2416, 0xc93a2a].forEach((c, i) => {
     const b = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.035, 0.2, 24), std(c, 0.3));
@@ -639,7 +629,7 @@ export function buildWorld(): World {
   const tick = (t: number) => {
     home.userData.tick(t, T.lightShaft);
   };
-  return { scene, setPlace, flames, fireLight, keyLight, keyBase: keyLight.intensity, plate, plateFood, tick };
+  return { scene, setPlace, flames, fireLight, keyLight, keyBase: keyLight.intensity, plate, plateFood, tick, setUnlocked: bins.setUnlocked };
 }
 
 // ───────────────────────── 집 주방 (레시피 연구) ─────────────────────────

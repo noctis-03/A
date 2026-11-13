@@ -1292,8 +1292,14 @@ class Game {
     this.particles.step(h, this.wok, 1);
   }
 
+  private shownUnlocked = -1;
+
   private update(dt: number) {
     this.time += dt;
+    if (this.unlocked !== this.shownUnlocked) {
+      this.shownUnlocked = this.unlocked;
+      this.world.setUnlocked(this.unlocked);
+    }
     this.updateFraming(dt);
     const scene = this.world.scene;
 

@@ -92,6 +92,8 @@ npm run build    # dist/ 로 빌드 (상대 경로라 Electron / Capacitor 에 �
 | `src/transition.ts` | 화면 전환 로딩창 (사선 패널 쓸기 · 제목 · 로딩 바 · 재료 띠) |
 | `src/look.ts` | 카툰 셰이딩(4단계·남보라 그림자·림라이트)·외곽선, 후처리(AO · 블룸 · 색보정/비네팅 · SMAA), 웍 반사 환경맵, 웍질 불길·불티 |
 | `src/quality.ts` | 그래픽 품질 단계 (자동 · 낮음 · 중간 · 높음): 해상도 · 그림자 · AO · 안티에일리어싱 |
+| `src/bins.ts` | 트럭 재료 통 10개: 실제 조각이 쌓인 더미(인스턴스), 안 열린 재료는 뚜껑 |
+| `src/requests.ts` | 손님 요청사항 (빼기 · 많이 · 적게 · 추가 · 불맛): 주문 만들기와 판정 |
 | `src/customers.ts` | 손님 모델과 행동 |
 | `src/ingredients.ts` | 재료 10개 · 레시피 13개(넣는 순서와 양) 데이터 |
 | `src/audio.ts` | Howler.js 효과음 (에셋 없이 코드로 합성) |

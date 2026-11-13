@@ -399,7 +399,7 @@ export class Particles {
 
 // ───────────────────────── 렌더링 ─────────────────────────
 
-function shapeGeometry(shape: Shape): THREE.BufferGeometry {
+export function shapeGeometry(shape: Shape): THREE.BufferGeometry {
   switch (shape) {
     case 'grain':
       return new THREE.SphereGeometry(1, 10, 7).scale(1.45, 0.85, 0.9);
