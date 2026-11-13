@@ -140,6 +140,9 @@ class Game {
   readonly debug = new DebugPanel();
   readonly post: Post;
   private camBase = new THREE.Vector3();
+  /** 세로 화면 구도: 현재 / 목표 확대(k = 1/tan(fov/2))와 세로 이동(px) */
+  private fit = { k: 0, s: 0, tk: 0, ts: 0, measureIn: 0, on: false };
+  private fitTmp = new THREE.Vector3();
   private shake = 0;
   private flareCd = 0;
   readonly sfx = new Sfx();
@@ -376,7 +379,84 @@ class Game {
     this.camera.lookAt(0, 1.08, -0.6);
     this.camBase.copy(this.camera.position);
     this.post.setSize(w, h, this.renderer.getPixelRatio());
+    this.camera.clearViewOffset();
     this.camera.updateProjectionMatrix();
+    this.camera.updateMatrixWorld();
+    this.fit.on = portrait;
+    this.fit.k = 0;
+    this.fit.measureIn = 0;
+  }
+
+  /**
+   * 세로 화면(휴대폰)에서는 위 상태줄 · 주문서와 아래 재료 패널 · 게이지가 화면을 많이 덮어
+   * 웍이 패널 뒤로 숨는다. 패널 사이의 빈 띠를 재서, 웍 앞 림이 띠 아래쪽에,
+   * 위쪽 관심 영역(연구: 들고 있는 기름통, 장사: 손님 얼굴)이 띠 위쪽에 오도록
+   * 카메라 위치·방향은 그대로 두고 확대(fov)와 화면 세로 이동(view offset)만 맞춘다.
+   */
+  private updateFraming(dt: number) {
+    const f = this.fit;
+    if (!f.on) return;
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    f.measureIn -= dt;
+    if (f.measureIn <= 0) {
+      f.measureIn = 0.3;
+      const rect = (id: string) => {
+        const el = document.getElementById(id);
+        if (!el || el.classList.contains('hidden')) return null;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 && getComputedStyle(el).display !== 'none' ? r : null;
+      };
+      let top = 0;
+      for (const id of ['top', 'ticket', 'guide']) {
+        const r = rect(id);
+        if (r && r.top < H * 0.5) top = Math.max(top, r.bottom);
+      }
+      let bottom = H;
+      for (const id of ['gauge', 'bottom', 'hint']) {
+        const r = rect(id);
+        if (r && r.bottom > H * 0.5 && (id !== 'hint' || r.height < 60)) bottom = Math.min(bottom, r.top);
+      }
+      top += 10;
+      bottom -= 14;
+      // 띠가 너무 좁으면(튜토리얼 카드 등) 위쪽 가림은 일부 감수한다
+      if (bottom - top < 220) top = Math.max(0, bottom - 220);
+
+      // 카메라 공간 기울기 t = y/(-z), u = x/(-z): fov 와 무관
+      const cam = this.camera;
+      const view = cam.matrixWorldInverse;
+      const slope = (x: number, y: number, z: number) => {
+        const p = this.fitTmp.set(x, y, z).applyMatrix4(view);
+        return { t: p.y / -p.z, u: Math.abs(p.x) / -p.z };
+      };
+      const A = slope(0, 1.04, 0.0); // 웍 앞 림과 손잡이 시작 부분
+      const B = this.state === 'selling' ? slope(0, -0.25 + 1.78, -1.72) : slope(0, 1.42, -0.62);
+      const sides = [slope(0.56, 0.95, -0.09), slope(-0.3, 1.08, -0.38), slope(0.3, 1.08, -0.38)];
+      // 세로로 A~B 가 띠에 꼭 맞는 확대
+      let k = (bottom - top) / ((B.t - A.t) * (H / 2));
+      // 가로로 기름통 · 웍 림이 화면 밖으로 나가지 않게
+      const aspect = W / H;
+      for (const sd of sides) k = Math.min(k, (0.92 * aspect) / Math.max(1e-3, sd.u));
+      // fov 45° ~ 100°
+      k = THREE.MathUtils.clamp(k, 1 / Math.tan(THREE.MathUtils.degToRad(50)), 1 / Math.tan(THREE.MathUtils.degToRad(22.5)));
+      // 띠 가운데에 A~B 의 가운데가 오게
+      const mid = (top + bottom) / 2;
+      const s = mid - (H / 2) * (1 - (k * (A.t + B.t)) / 2);
+      f.tk = k;
+      f.ts = s;
+      if (f.k === 0) {
+        f.k = k;
+        f.s = s;
+      }
+    }
+    const a = 1 - Math.exp(-dt * 5);
+    f.k += (f.tk - f.k) * a;
+    f.s += (f.ts - f.s) * a;
+    const fov = THREE.MathUtils.radToDeg(2 * Math.atan(1 / f.k));
+    if (Math.abs(fov - this.camera.fov) > 1e-3 || this.camera.view?.offsetY !== -f.s) {
+      this.camera.fov = fov;
+      this.camera.setViewOffset(W, H, 0, -f.s, W, H);
+    }
   }
 
   // ───────────── 저장 / 로비 ─────────────
@@ -1015,6 +1095,7 @@ class Game {
 
   private update(dt: number) {
     this.time += dt;
+    this.updateFraming(dt);
     const scene = this.world.scene;
 
     if (this.state === 'selling') {
