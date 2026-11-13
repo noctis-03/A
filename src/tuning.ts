@@ -93,6 +93,19 @@ export const DEFAULTS = {
   customerGapRand: 2,
   ingredientAmount: 1,
 
+  // ── 손님 요청사항 ──
+  requestStartDay: 2,
+  requestChance: 0.35,
+  requestChancePerDay: 0.1,
+  requestChanceMax: 0.8,
+  requestTwoFromDay: 4,
+  requestTwoChance: 0.3,
+  requestRemovePenalty: 0.55,
+  requestMissPenalty: 0.8,
+  fireReqToss: 0.5,
+  requestTip: 0.15,
+  patiencePerReq: 3,
+
   // ── 그래픽 ──
   exposure: 0.95,
   outlinePx: 1.4,
@@ -246,6 +259,22 @@ export const GROUPS: { name: string; items: [TuneKey, Meta][] }[] = [
       ['customerGapMin', { label: '다음 손님까지 최소 (초)', min: 0, max: 20, step: 0.5 }],
       ['customerGapRand', { label: '다음 손님 랜덤 추가 (초)', min: 0, max: 20, step: 0.5 }],
       ['ingredientAmount', { label: '한 줌당 재료 양 배율', min: 0.3, max: 2, step: 0.05 }],
+    ],
+  },
+  {
+    name: '손님 요청사항',
+    items: [
+      ['requestStartDay', { label: '요청이 나오기 시작하는 날', min: 1, max: 10, step: 1, int: true }],
+      ['requestChance', { label: '첫날 요청 확률', min: 0, max: 1, step: 0.05 }],
+      ['requestChancePerDay', { label: '하루마다 늘어나는 확률', min: 0, max: 0.5, step: 0.01 }],
+      ['requestChanceMax', { label: '요청 확률 상한', min: 0, max: 1, step: 0.05 }],
+      ['requestTwoFromDay', { label: '요청 2개가 나오기 시작하는 날', min: 1, max: 15, step: 1, int: true }],
+      ['requestTwoChance', { label: '요청 2개 확률', min: 0, max: 1, step: 0.05 }],
+      ['requestRemovePenalty', { label: '빼 달란 재료를 넣었을 때 품질 배율', min: 0, max: 1, step: 0.05 }],
+      ['requestMissPenalty', { label: '다른 요청을 못 지켰을 때 품질 배율', min: 0, max: 1, step: 0.05 }],
+      ['fireReqToss', { label: '불맛 요청 통과 웍질 보너스 (1 = 100%)', min: 0, max: 3, step: 0.05 }],
+      ['requestTip', { label: '요청을 다 지켰을 때 추가 팁 (가격 비율)', min: 0, max: 1, step: 0.01 }],
+      ['patiencePerReq', { label: '요청 하나당 추가 인내심 (초)', min: 0, max: 20, step: 0.5 }],
     ],
   },
   {

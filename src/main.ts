@@ -18,6 +18,7 @@ import { ParticleRenderer, Particles, type DishStats, type TypeStat } from './ph
 import { buildWorld, Steam } from './scene';
 import { Wok } from './wok';
 import { enableShadows, FireFx, makeKitchenEnv, Post, toonify } from './look';
+import { checkRequests, makeOrder, reqLabel, reqState, type Order } from './requests';
 import { FIXED_LEVELS, loadQuality, QUALITY_LABEL, QUALITY_LEVELS, resolveQuality, saveQuality, type QualityLevel, type QualityProfile } from './quality';
 import { T, loadTuning } from './tuning';
 import { DebugPanel, isTyping } from './debug';
@@ -87,6 +88,10 @@ interface Verdict {
   toss: number;
   tossPay: number;
   comment: string;
+  /** 요청을 다 지켜서 받은 추가 팁 */
+  reqTip: number;
+  /** 요청이 있었고 다 지켰는지 (요청 없음: null) */
+  reqOk: boolean | null;
 }
 
 function readSave(): Save | null {
@@ -1008,9 +1013,14 @@ class Game {
     const pool = RECIPES.filter((r) => this.found.has(r.id));
     if (!pool.length) return;
     const recipe = pool[Math.floor(Math.random() * pool.length)];
+    // 2일차부터 손님마다 요청사항이 붙을 수 있다 (재료 빼기 · 많이 · 적게 · 추가 · 불맛)
+    const unlockedIds = INGREDIENTS.filter((d) => this.isUnlocked(d.id)).map((d) => d.id);
+    const order = makeOrder(recipe, this.round, unlockedIds);
     const patience =
-      Math.max(T.patienceMin, T.patienceBase - this.round * T.patiencePerDay) + recipe.steps.length * T.patiencePerIng;
-    this.customer = new Customer(this.world.scene, recipe, patience);
+      Math.max(T.patienceMin, T.patienceBase - this.round * T.patiencePerDay) +
+      order.steps.length * T.patiencePerIng +
+      order.reqs.length * T.patiencePerReq;
+    this.customer = new Customer(this.world.scene, order, patience);
     toonify(this.customer.group);
     enableShadows(this.customer.group);
     this.sfx.play('bell', 0.5);
@@ -1022,8 +1032,9 @@ class Game {
     return 1;
   }
 
-  private judge(recipe: Recipe, patienceFrac: number): Verdict {
+  private judge(order: Order, patienceFrac: number): Verdict {
     const s = this.stats;
+    const recipe = { ...order.recipe, steps: order.steps, price: order.price };
     const want = recipeIngs(recipe);
     const missingIds = want.filter((i) => !this.counts.has(i));
     const extra = [...this.counts.keys()].filter((i) => !want.includes(i)).length;
@@ -1073,7 +1084,9 @@ class Game {
     const base = ingScore * amountScore * ratioScore * orderScore * cookScore * evenScore * burnScore * oilScore;
     // 웍질 보너스: 재료가 높이 떠오를수록 가산점 (기본 점수에 비례해서 붙는다)
     const toss = this.tossFrac();
-    const quality = Math.min(1, base * (1 + T.tossQuality * toss));
+    // 손님 요청사항을 지켰는지
+    const req = checkRequests(order, this.counts, toss);
+    const quality = Math.min(1, base * req.score * (1 + T.tossQuality * toss));
 
     const worstT = worst ? this.types[ING_INDEX[worst]] : null;
     const cookMsg = worst && worstT
@@ -1092,7 +1105,10 @@ class Game {
     ];
     issues.sort((a, b) => a[0] - b[0]);
     let comment: string;
-    if (quality >= 0.9 && toss >= 1) comment = '완벽해요! 불맛 최고!';
+    // 못 지킨 요청이 있으면 그 얘기가 먼저 나온다
+    if (req.failed.length) comment = req.failed[0];
+    else if (req.allOk && quality >= 0.75) comment = quality >= 0.9 ? '말한 대로 딱이에요! 최고!' : '요청대로 해 주셨네요!';
+    else if (quality >= 0.9 && toss >= 1) comment = '완벽해요! 불맛 최고!';
     else if (quality >= 0.9) comment = '완벽해요!';
     else if (quality >= 0.75) comment = '맛있어요!';
     else comment = issues[0][1];
@@ -1101,7 +1117,8 @@ class Game {
     const pay = quality < T.refundBelow ? 0 : Math.round((recipe.price * (0.4 + 0.6 * quality)) / 100) * 100;
     const tip = quality >= T.tipAbove ? Math.round((recipe.price * T.tipRate * patienceFrac) / 100) * 100 : 0;
     const tossPay = pay > 0 ? Math.round((recipe.price * T.tossPay * toss) / 100) * 100 : 0;
-    return { quality, stars, pay, tip, toss, tossPay, comment };
+    const reqTip = req.allOk && pay > 0 ? Math.round((recipe.price * T.requestTip) / 100) * 100 : 0;
+    return { quality, stars, pay, tip, toss, tossPay, comment, reqTip, reqOk: order.reqs.length ? req.allOk : null };
   }
 
   /** 적정 기름(모든 레시피 공통) 대비 지금 기름 비율 (1 = 적정) */
@@ -1118,8 +1135,8 @@ class Game {
   serve() {
     const c = this.customer;
     if (this.state !== 'selling' || !c || c.state !== 'waiting' || this.stats.live < 8) return;
-    const v = this.judge(c.recipe, c.patienceFrac);
-    const earned = v.pay + v.tip + v.tossPay;
+    const v = this.judge(c.order, c.patienceFrac);
+    const earned = v.pay + v.tip + v.tossPay + v.reqTip;
     this.money += earned;
     this.dayMoney += earned;
     this.dayToss += v.tossPay;
@@ -1151,6 +1168,7 @@ class Game {
     const starStr = '★'.repeat(v.stars) + '☆'.repeat(5 - v.stars);
     if (v.pay > 0) {
       const extras = [];
+      if (v.reqTip) extras.push(`요청 반영 +${won(v.reqTip)}원`);
       if (v.tossPay) extras.push(`웍질 보너스 +${won(v.tossPay)}원`);
       if (v.tip) extras.push(`팁 +${won(v.tip)}원`);
       this.toast(`${starStr}  +${won(v.pay)}원`, extras.join(' · '), v.stars >= 4 ? 'good' : '', v.tossPay ? 'bonus' : v.tip ? 'tip' : undefined);
@@ -1521,16 +1539,26 @@ class Game {
     $('ticket').classList.toggle('hidden', !waiting);
     if (c && waiting) {
       $('ticket-no').textContent = `주문 No. ${String(this.served + this.lost + 1).padStart(2, '0')}`;
-      $('ticket-price').textContent = `${won(c.recipe.price)}원`;
-      $('ticket-name').textContent = c.recipe.name;
-      const rows = c.recipe.steps.map(([id, n], i) => {
+      const o = c.order;
+      $('ticket-price').textContent = `${won(o.price)}원`;
+      $('ticket-name').textContent = o.recipe.name;
+      // 요청사항 표시 (지킨 것은 초록, 어긴 것은 빨강)
+      this.setHtml(
+        'ticket-reqs',
+        o.reqs
+          .map((q) => `<span class="tk-req ${q.kind} ${reqState(o, q, this.counts)}">${q.ing ? tok(q.ing, 'xs') : ''}${reqLabel(q)}</span>`)
+          .join(''),
+      );
+      $('ticket-reqs').classList.toggle('hidden', !o.reqs.length);
+      const rows = o.steps.map(([id, n], i) => {
         const got = this.counts.get(id) ?? 0;
         const cls = got === 0 ? '' : got === n ? 'ok' : got > n ? 'wrong' : 'part';
         return `<div class="tk-step ${cls}"><span class="no">${i + 1}</span>${tok(id, 'sm')}<span class="nm">${ingDef(id).name}</span><span class="ct">${got} / ${n}</span></div>`;
       });
       for (const id of this.counts.keys()) {
-        if (c.recipe.steps.some(([x]) => x === id)) continue;
-        rows.push(`<div class="tk-step wrong"><span class="no">✕</span>${tok(id, 'sm')}<span class="nm">${ingDef(id).name}</span><span class="ct">주문에 없음</span></div>`);
+        if (o.steps.some(([x]) => x === id)) continue;
+        const removed = o.reqs.some((q) => q.kind === 'remove' && q.ing === id);
+        rows.push(`<div class="tk-step wrong"><span class="no">✕</span>${tok(id, 'sm')}<span class="nm">${ingDef(id).name}</span><span class="ct">${removed ? '빼 달랬어요!' : '주문에 없음'}</span></div>`);
       }
       this.setHtml('ticket-ings', rows.join(''));
       const f = c.patienceFrac;
@@ -1548,7 +1576,7 @@ class Game {
       b.setAttribute('aria-label', open ? `${ingDef(id).name} 넣기 (${n}/${MAX_PORTIONS})` : '잠긴 재료');
       (b.querySelector('.cnt') as HTMLElement).textContent = n ? `×${n}` : '';
       (b.querySelector('em') as HTMLElement).textContent = open ? ingDef(id).name : '잠김';
-      const want = waiting && c ? c.recipe.steps.find(([x]) => x === id) : undefined;
+      const want = waiting && c ? c.order.steps.find(([x]) => x === id) : undefined;
       b.classList.toggle('need', !!want && n < want[1]);
     }
     $<HTMLButtonElement>('serve').disabled = !waiting || s.live < 8;
@@ -1614,7 +1642,10 @@ class Game {
     $('toss-text').textContent = has ? `+${Math.round(toss * 100)}%` : '-';
 
     // 말풍선
-    const speaker = c && c.say ? c : this.leaving.find((l) => l.say);
+    let speaker = c && c.say ? c : this.leaving.find((l) => l.say);
+    // 휴대폰 배치에선 손님 머리가 주문서 뒤에 있어 말풍선이 요청 메모를 가린다.
+    // 주문 말은 도착 직후 잠깐만 보여 주고 주문서로 넘긴다 (반응 말풍선은 그대로)
+    if (speaker && speaker === c && this.fit.on && c.waited > 3) speaker = undefined;
     const bubble = $('bubble');
     if (speaker) {
       const p = this.tmp.copy(speaker.head).project(this.camera);

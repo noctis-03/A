@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Recipe } from './ingredients';
+import { orderSpeech, type Order } from './requests';
 
 const SKIN = [0xf6d2b0, 0xe8b88f, 0xc98f62, 0x9a6a45, 0xfbe0c8];
 const SHIRT = [0x3b82c4, 0xd9534f, 0x4caf7a, 0xf0b23a, 0x8e62c9, 0x2f3a4a, 0xf08fb0, 0xffffff];
@@ -18,6 +19,15 @@ export class Customer {
   patience: number;
   /** 말풍선에 띄울 문장 */
   say = '';
+
+  /** 주문하고 기다린 시간 (초) */
+  get waited() {
+    return this.state === 'waiting' ? this.t : 0;
+  }
+
+  get recipe(): Recipe {
+    return this.order.recipe;
+  }
   private t = 0;
   private dir: number;
   private standX: number;
@@ -27,7 +37,8 @@ export class Customer {
 
   constructor(
     scene: THREE.Scene,
-    readonly recipe: Recipe,
+    /** 요청사항이 반영된 주문 */
+    readonly order: Order,
     readonly maxPatience: number,
   ) {
     this.patience = maxPatience;
@@ -102,7 +113,7 @@ export class Customer {
         g.position.y = GROUND;
         g.rotation.y = 0;
         this.state = 'waiting';
-        this.say = `${this.recipe.name} 주세요!`;
+        this.say = orderSpeech(this.order);
         this.t = 0;
       }
     } else if (this.state === 'waiting') {
