@@ -94,7 +94,8 @@ npm run build    # dist/ 로 빌드 (상대 경로라 Electron / Capacitor 에 �
 | `src/quality.ts` | 그래픽 품질 단계 (자동 · 낮음 · 중간 · 높음): 해상도 · 그림자 · AO · 안티에일리어싱 |
 | `src/bins.ts` | 트럭 재료 통 10개: 실제 조각이 쌓인 더미(인스턴스), 안 열린 재료는 뚜껑 |
 | `src/requests.ts` | 손님 요청사항 (빼기 · 많이 · 적게 · 추가 · 불맛): 주문 만들기와 판정 |
-| `src/customers.ts` | 손님 모델과 행동 |
+| `src/customers.ts` | 손님 모델과 행동 (웍을 따라보는 시선, 숨쉬기, 깜빡임, 상황별 표정, 웍질 감탄) |
+| `src/faces.ts` | 손님 얼굴 표정 8종 텍스처 (기대 · 보통 · 초조 · 화남 · 감탄 · 만족 · 아쉬움 · 놀람) |
 | `src/ingredients.ts` | 재료 10개 · 레시피 13개(넣는 순서와 양) 데이터 |
 | `src/audio.ts` | Howler.js 효과음 (에셋 없이 코드로 합성) |
 

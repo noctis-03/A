@@ -1160,7 +1160,7 @@ class Game {
 
     this.particles.clearLive();
     this.resetDish();
-    c.react(v.comment);
+    c.react(v.comment, v.reqOk === false ? 'shock' : v.pay === 0 || v.stars <= 2 ? 'sad' : v.stars >= 4 ? 'delight' : 'happy');
     this.leaving.push(c);
     this.customer = null;
     this.nextCustomerIn = T.customerGapMin + Math.random() * T.customerGapRand;
@@ -1180,7 +1180,7 @@ class Game {
   }
 
   private customerGaveUp(c: Customer) {
-    c.react('너무 오래 걸리네요. 갈게요!');
+    c.react('너무 오래 걸리네요. 갈게요!', 'angry');
     this.leaving.push(c);
     this.customer = null;
     this.lost++;
@@ -1307,6 +1307,10 @@ class Game {
       this.timeLeft -= dt;
       const c = this.customer;
       if (c) {
+        // 손님은 웍을 따라보고, 재료가 높이 뜰수록 신난다
+        const lift = this.particles.airLift;
+        c.excite = this.stats.live > 0 && this.particles.airborne >= 3 ? clamp((lift - T.flameMinLift) / 0.18, 0, 1) : 0;
+        c.lookAt.copy(this.wok.base).add(this.wok.off).setY(1.0 + Math.min(0.4, lift));
         c.update(dt, scene);
         if (c.state === 'waiting' && c.patience <= 0) this.customerGaveUp(c);
       } else if (this.timeLeft > 0) {
