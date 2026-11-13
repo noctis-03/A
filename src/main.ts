@@ -36,6 +36,30 @@ const won = (n: number) => n.toLocaleString('ko-KR');
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
 const SUBSTEP = 1 / 240;
+
+type SafeId = 'msaa' | 'shadows' | 'ao' | 'bloom';
+const SAFE_STEPS: { id: SafeId; label: string }[] = [
+  { id: 'msaa', label: '안티에일리어싱(MSAA)' },
+  { id: 'shadows', label: '그림자' },
+  { id: 'ao', label: '구석 어둡게(AO)' },
+  { id: 'bloom', label: '빛 번짐(블룸)' },
+];
+const SAFE_KEY = 'woktruck.gfxsafe';
+function loadSafe(): SafeId[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(SAFE_KEY) ?? '[]');
+    return Array.isArray(v) ? v.filter((x): x is SafeId => SAFE_STEPS.some((s) => s.id === x)) : [];
+  } catch {
+    return [];
+  }
+}
+function saveSafe(v: SafeId[]) {
+  try {
+    localStorage.setItem(SAFE_KEY, JSON.stringify(v));
+  } catch {
+    /* 저장 불가 환경 */
+  }
+}
 /** 한 프레임 최대 0.1초 분량 */
 const MAX_SUBSTEPS = 24;
 const GAUGE_MAX = 1.6;
@@ -157,6 +181,12 @@ class Game {
   private autoCap: Exclude<QualityLevel, 'auto'> | null = null;
   private renderScale = 1;
   private perf = { t: 0, frames: 0, settle: 3 };
+  /**
+   * 검은 화면 감지 후 끈 기능 (이 브라우저에 기억). 화면 가운데 픽셀이 연달아 완전한 검정이면
+   * MSAA → 그림자 → AO → 블룸 순서로 하나씩 끈다. 배경색이 검정이 아니라서 정상 화면과 헷갈리지 않는다.
+   */
+  private safe = loadSafe();
+  private black = { wait: 2, hits: 0, clean: 0, buf: new Uint8Array(4) };
   /** 튜토리얼에서 지금 강조 중인 요소들 */
   private pulsing: HTMLElement[] = [];
 
@@ -348,8 +378,19 @@ class Game {
 
   /** 품질 단계를 렌더러 · 그림자 · 후처리에 반영하고 버튼 글자를 바꾼다 */
   private applyQuality() {
-    const { level, profile } = resolveQuality(this.qualityLevel, this.autoCap);
+    const resolved = resolveQuality(this.qualityLevel, this.autoCap);
+    const level = resolved.level;
+    const safe = this.safe;
+    const profile: QualityProfile = {
+      ...resolved.profile,
+      msaa: safe.includes('msaa') ? 0 : resolved.profile.msaa,
+      shadows: safe.includes('shadows') ? false : resolved.profile.shadows,
+      ao: safe.includes('ao') ? false : resolved.profile.ao,
+    };
     this.quality = profile;
+    this.post.bloom.enabled = !safe.includes('bloom');
+    this.black.clean = 0;
+    this.black.wait = 2;
     const scale = this.qualityLevel === 'auto' ? this.renderScale : 1;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, profile.maxPixelRatio) * scale);
     const key = this.world.keyLight;
@@ -426,6 +467,58 @@ class Game {
    * 자동 품질: 게임 중 3초마다 평균 fps 를 재서 40 아래면 한 단계씩 낮춘다
    * (높음 → 중간 → 낮음 → 낮음에서 해상도 80%씩, 최소 60%). 올리지는 않는다 (오르내림 반복 방지).
    */
+  private checkBlack(raw: number) {
+    const b = this.black;
+    // 정상 화면이 20번(약 10초) 연속이면 그만 잰다 (픽셀 읽기는 GPU 를 잠깐 멈추게 한다). 품질이 바뀌면 다시 잰다
+    if (!this.active || raw > 0.5 || b.clean >= 20) return;
+    if (b.wait > 0) {
+      b.wait -= raw;
+      return;
+    }
+    b.wait = 0.5;
+    // 그린 직후 같은 작업 안에서 화면 버퍼를 읽는다 (가운데 5곳)
+    const gl = this.renderer.getContext();
+    const w = gl.drawingBufferWidth;
+    const h = gl.drawingBufferHeight;
+    this.renderer.setRenderTarget(null);
+    let black = true;
+    for (const [fx, fy] of [[0.5, 0.5], [0.35, 0.45], [0.65, 0.45], [0.4, 0.65], [0.6, 0.65]]) {
+      gl.readPixels(Math.floor(w * fx), Math.floor(h * fy), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, b.buf);
+      if (b.buf[0] + b.buf[1] + b.buf[2] > 0) {
+        black = false;
+        break;
+      }
+    }
+    if (!black) {
+      b.hits = 0;
+      b.clean++;
+      return;
+    }
+    b.clean = 0;
+    if (++b.hits < 3) return;
+    b.hits = 0;
+    b.wait = 2;
+    const next = SAFE_STEPS.find((s) => !this.safe.includes(s.id));
+    const info = (() => {
+      try {
+        const ext = gl.getExtension('WEBGL_debug_renderer_info');
+        return ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : String(gl.getParameter(gl.RENDERER));
+      } catch {
+        return '?';
+      }
+    })();
+    if (!next) {
+      console.warn('[웍웍] 검은 화면이 계속됩니다. 그래픽 품질을 낮음으로 바꿔 주세요.', { gpu: info, quality: this.qualityLevel });
+      return;
+    }
+    this.safe.push(next.id);
+    saveSafe(this.safe);
+    console.warn(`[웍웍] 검은 화면 감지 → ${next.label} 끔`, { gpu: info, quality: this.qualityLevel, off: [...this.safe] });
+    this.applyQuality();
+    this.resize();
+    this.toast('화면이 검게 나와서 그래픽 기능을 껐어요', `${next.label} 끔 · 이 브라우저에 기억`, '');
+  }
+
   private watchPerf(raw: number) {
     const p = this.perf;
     if (this.qualityLevel !== 'auto' || !this.active || document.hidden || raw > 0.5) {
@@ -1556,6 +1649,7 @@ class Game {
     this.world.tick(this.time);
     key.intensity = this.world.keyBase * T.keyLight;
     this.post.render();
+    this.checkBlack(raw);
   }
 }
 

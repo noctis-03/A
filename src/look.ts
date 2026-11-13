@@ -385,12 +385,38 @@ export class Post {
   setQuality(q: QualityProfile) {
     const prev = this.quality;
     this.quality = q;
-    if (!prev || prev.msaa !== q.msaa) {
+    const samples = this.supportedSamples(q.msaa);
+    if (!prev || this.samples !== samples) {
+      this.samples = samples;
       for (const rt of [this.composer.renderTarget1, this.composer.renderTarget2]) {
-        rt.samples = q.msaa;
+        rt.samples = samples;
         rt.dispose();
       }
     }
+  }
+
+  private samples = -1;
+  private sampleList: number[] | null = null;
+
+  /**
+   * 후처리 버퍼(RGBA16F)에 이 GPU 가 실제로 지원하는 MSAA 샘플 수 중 want 이하 최대값.
+   * MAX_SAMPLES 보다 형식별 한도가 낮은 GPU 가 있어, 넘게 요청하면 버퍼가 깨져 화면이 검게 나온다.
+   */
+  private supportedSamples(want: number) {
+    if (want <= 0) return 0;
+    if (!this.sampleList) {
+      this.sampleList = [];
+      try {
+        const gl = this.renderer.getContext();
+        if (gl instanceof WebGL2RenderingContext) {
+          const list = gl.getInternalformatParameter(gl.RENDERBUFFER, gl.RGBA16F, gl.SAMPLES) as Int32Array | null;
+          if (list) this.sampleList = Array.from(list);
+        }
+      } catch {
+        this.sampleList = [];
+      }
+    }
+    return this.sampleList.filter((n) => n <= want).reduce((a, b) => Math.max(a, b), 0);
   }
 
   setSize(w: number, h: number, ratio: number) {
