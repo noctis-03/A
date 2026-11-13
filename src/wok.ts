@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { toonify } from './look';
 import { T } from './tuning';
+import { OilPool } from './oilpool';
 
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 
@@ -26,18 +27,20 @@ export class Wok {
   readonly prevMatrix = new THREE.Matrix4();
   readonly inverse = new THREE.Matrix4();
   readonly group = new THREE.Group();
-  private oilSheen = new THREE.Mesh(
-    new THREE.CircleGeometry(1, 32),
-    new THREE.MeshBasicMaterial({ color: 0xf7d97a, transparent: true, opacity: 0.28, depthWrite: false }),
-  );
+  /** 고인 기름 (기울이면 흐르고 출렁이는 수면) */
+  readonly oil = new OilPool(this.R, this.H);
+  private accel = new THREE.Vector3();
+  private prevVel = new THREE.Vector3();
 
   /**
    * 기름 양(ml)만큼 웍 안에 기름이 고인다. 넣는 만큼 수면이 계속 올라가며 넓어진다
    * (림까지 차면 더 넓어지지 않음). 잘 보이도록 실제 부피보다 크게 그린다.
    */
   setOil(ml: number) {
-    this.oilSheen.visible = ml > 0.05;
-    if (!this.oilSheen.visible) return;
+    if (ml <= 0.05) {
+      this.oil.setDepth(0);
+      return;
+    }
     const R = this.R;
     // 구 모양 그릇에 고인 액체 부피: V = π·y²·(3R − y)/3 → 수면 높이 y 를 이분법으로 구한다
     const V = ml * 1e-6 * 10;
@@ -49,9 +52,7 @@ export class Wok {
       else hi = y;
     }
     const y = Math.max(0.004, lo);
-    const r = Math.sqrt(Math.max(0, R * R - (R - y) * (R - y)));
-    this.oilSheen.scale.setScalar(Math.max(0.03, r));
-    this.oilSheen.position.y = y + 0.002;
+    this.oil.setDepth(y);
   }
 
   private pos = new THREE.Vector3();
@@ -102,6 +103,10 @@ export class Wok {
     this.pitch += (pt - this.pitch) * k;
     this.roll += (rt - this.roll) * k;
     this.updateMatrix();
+    // 웍 가속도 → 고인 기름이 출렁인다
+    this.accel.subVectors(v, this.prevVel).divideScalar(h);
+    this.prevVel.copy(v);
+    this.oil.step(h, this.accel, this.inverse);
     for (const { m, base } of this.metals) m.envMapIntensity = base * T.wokShine;
   }
 
@@ -119,7 +124,7 @@ export class Wok {
 
   /** 주방 환경맵을 금속 재질에 건다 */
   setEnvMap(tex: THREE.Texture) {
-    for (const { m } of this.metals) {
+    for (const m of [...this.metals.map((x) => x.m), this.oil.material]) {
       m.envMap = tex;
       m.needsUpdate = true;
     }
@@ -181,10 +186,7 @@ export class Wok {
     toonify(this.group);
 
     // 웍 바닥에 고인 기름 (양에 따라 넓어진다)
-    this.oilSheen.rotation.x = -Math.PI / 2;
-    this.oilSheen.position.y = 0.006;
-    this.oilSheen.visible = false;
-    this.group.add(this.oilSheen);
+    this.group.add(this.oil.mesh);
   }
 }
 

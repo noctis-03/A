@@ -155,7 +155,9 @@ class Game {
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.wok.setEnvMap(makeKitchenEnv(this.renderer));
+    const env = makeKitchenEnv(this.renderer);
+    this.wok.setEnvMap(env);
+    this.oil.setEnvMap(env);
     this.post = new Post(this.renderer, this.world.scene, this.camera);
     this.applyQuality();
     this.world.scene.add(this.wok.group, this.particleView.group);
@@ -168,6 +170,8 @@ class Game {
     this.debug.setInfo(() => this.debugInfo());
     this.showLobby();
     this.renderer.setAnimationLoop(() => this.frame());
+    // 개발 서버에서만: 콘솔 · 자동 테스트용 핸들 (배포 빌드에서는 빠진다)
+    if (import.meta.env.DEV) (window as unknown as { __game: Game }).__game = this;
     // 첫 로딩: 덮인 상태에서 시작해 로비가 드러난다
     this.wipe.run({ kind: 'lobby', icon: 'logo', kicker: 'WOK WOK!', title: '웍웍!', sub: '불맛 볶음밥 푸드트럭' }, () => {}, { covered: true, hold: 1100 });
   }
@@ -1130,6 +1134,9 @@ class Game {
       this.camBase.z,
     );
     const heatLevel = clamp(s.avgCook, 0, 1);
+    // 달궈진 기름일수록 수면에 아지랑이 같은 잔물결이 인다
+    this.wok.oil.heat = 0.35 + heatLevel * 0.8 + flare * 0.4;
+    this.wok.oil.update();
     this.steam.update(dt, s.live ? 2 + heatLevel * 7 + s.burntFrac * 14 : 0, wc, clamp(s.burntFrac * 2.5, 0, 1));
 
     this.particleView.update(dt);

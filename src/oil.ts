@@ -35,9 +35,15 @@ export class OilBottle {
   private drops: THREE.InstancedMesh;
   private dp = new Float32Array(MAX_DROPS * 3);
   private dv = new Float32Array(MAX_DROPS * 3);
+  /** 0: 없음, 1: 병에서 나온 방울 (기름 양에 셈), 2: 떨어지며 튄 작은 방울 (안 셈) */
   private alive = new Uint8Array(MAX_DROPS);
   private next = 0;
   private m = new THREE.Matrix4();
+  private q = new THREE.Quaternion();
+  private s = new THREE.Vector3();
+  private dir = new THREE.Vector3();
+  private local = new THREE.Vector3();
+  private readonly yAxis = new THREE.Vector3(0, 1, 0);
 
   /** 이번 프레임에 웍에 들어간 기름 (ml), 게임 쪽에서 읽고 0으로 */
   landed = 0;
@@ -71,14 +77,28 @@ export class OilBottle {
     this.target.copy(this.home);
     scene.add(this.group);
 
-    this.drops = new THREE.InstancedMesh(
-      new THREE.SphereGeometry(0.0055, 6, 4),
-      new THREE.MeshBasicMaterial({ color: new THREE.Color(1.2, 1.0, 0.5), transparent: true, opacity: 0.6, depthWrite: false }),
-      MAX_DROPS,
-    );
+    // 매끈한 호박색 기름방울. 웍과 같은 주방 환경맵을 비춰 반짝인다
+    this.dropMat = new THREE.MeshStandardMaterial({
+      color: 0xf0b23a,
+      emissive: 0x3a2200,
+      roughness: 0.06,
+      metalness: 0,
+      transparent: true,
+      opacity: 0.88,
+      depthWrite: false,
+      envMapIntensity: 1.4,
+    });
+    this.drops = new THREE.InstancedMesh(new THREE.SphereGeometry(0.0055, 12, 8), this.dropMat, MAX_DROPS);
     this.drops.count = 0;
     this.drops.frustumCulled = false;
     scene.add(this.drops);
+  }
+
+  private dropMat: THREE.MeshStandardMaterial;
+
+  setEnvMap(tex: THREE.Texture) {
+    this.dropMat.envMap = tex;
+    this.dropMat.needsUpdate = true;
   }
 
   /** 화면 좌표(NDC)로 병을 눌렀는지 */
@@ -165,25 +185,65 @@ export class OilBottle {
       const lz = mi[2] * x + mi[6] * y + mi[10] * z + mi[14];
       const inside = ly < wok.H && lx * lx + lz * lz < wok.rimR * wok.rimR;
       const d = Math.sqrt(lx * lx + (ly - R) * (ly - R) + lz * lz);
+      const kind = this.alive[i];
       if (inside && d > R - 0.008) {
         this.alive[i] = 0;
-        this.landed += T.oilDrop;
+        this.local.set(lx, ly, lz);
+        if (kind === 1) {
+          this.landed += T.oilDrop;
+          wok.oil.splash(this.local, 1);
+          // 떨어진 자리에서 작은 방울이 튀어 오른다
+          const v = Math.abs(this.dv[o + 1]);
+          if (v > 1.2 && Math.random() < 0.55) this.splashOut(x, y, z, v);
+        } else {
+          wok.oil.splash(this.local, 0.35);
+        }
         continue;
       }
       if (y < 0.9 && !inside) {
         this.alive[i] = 0;
-        this.wasted++;
+        if (kind === 1) this.wasted++;
         continue;
       }
       if (y < -1) {
         this.alive[i] = 0;
         continue;
       }
-      this.m.makeTranslation(x, y, z);
+      // 속도 방향으로 늘어난 물방울 (빠를수록 길쭉, 부피는 그대로)
+      const vx = this.dv[o];
+      const vy = this.dv[o + 1];
+      const vz = this.dv[o + 2];
+      const sp = Math.hypot(vx, vy, vz);
+      const stretch = 1 + Math.min(2.6, sp * 0.75);
+      const base = kind === 2 ? 0.55 : 1;
+      const side = base / Math.sqrt(stretch);
+      if (sp > 1e-4) this.q.setFromUnitVectors(this.yAxis, this.dir.set(vx / sp, vy / sp, vz / sp));
+      else this.q.identity();
+      this.s.set(side, base * stretch, side);
+      this.m.compose(this.local.set(x, y, z), this.q, this.s);
       this.drops.setMatrixAt(n++, this.m);
     }
     this.drops.count = n;
     this.drops.instanceMatrix.needsUpdate = true;
+  }
+
+  /** 착지한 방울에서 튀는 작은 방울 1~2개 */
+  private splashOut(x: number, y: number, z: number, v: number) {
+    const k = 1 + Math.round(Math.random());
+    for (let j = 0; j < k; j++) {
+      const i = this.next;
+      this.next = (this.next + 1) % MAX_DROPS;
+      const o = i * 3;
+      this.alive[i] = 2;
+      this.dp[o] = x;
+      this.dp[o + 1] = y + 0.004;
+      this.dp[o + 2] = z;
+      const a = Math.random() * Math.PI * 2;
+      const h = 0.08 + Math.random() * 0.1;
+      this.dv[o] = Math.cos(a) * h;
+      this.dv[o + 1] = Math.min(0.7, v * (0.12 + Math.random() * 0.12));
+      this.dv[o + 2] = Math.sin(a) * h;
+    }
   }
 
   private emit(at: THREE.Vector3) {
