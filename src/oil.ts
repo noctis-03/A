@@ -84,7 +84,7 @@ export class OilBottle {
       roughness: 0.06,
       metalness: 0,
       transparent: true,
-      opacity: 0.88,
+      opacity: 0.62,
       depthWrite: false,
       envMapIntensity: 1.4,
     });

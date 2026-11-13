@@ -55,15 +55,17 @@ export class OilPool {
     private H: number,
   ) {
     this.material = new THREE.MeshStandardMaterial({
-      // 기름은 거의 투명하고 반사가 주인공: 바탕은 어두운 호박색으로 웍을 살짝 물들이고,
-      // 위에 비친 조명·창이 일렁이며 '젖은' 느낌을 낸다
-      color: 0x8a5a12,
+      // 기름은 거의 투명하고 반사가 주인공: 바탕은 옅은 호박색으로 웍을 아주 살짝 물들이고
+      // (웍 바닥 결이 비쳐 보임), 위에 비친 조명·창이 일렁이며 '젖은' 느낌을 낸다.
+      // 반사는 투명도와 상관없이 그대로 더한다 (premultipliedAlpha, 아래 opaque_fragment)
+      color: 0xb8841e,
       roughness: 0.035,
       metalness: 0,
       transparent: true,
-      opacity: 0.44,
+      premultipliedAlpha: true,
+      opacity: 0.12,
       depthWrite: false,
-      envMapIntensity: 2.6,
+      envMapIntensity: 1.3,
     });
     this.material.userData.keepPbr = true;
     this.material.onBeforeCompile = (shader) => this.patch(shader);
@@ -228,12 +230,12 @@ export class OilPool {
       .replace(
         '#include <alphamap_fragment>',
         `#include <alphamap_fragment>
+        float oilEdge = smoothstep( 1.0, 0.8, length( vDiscP ) );
         {
           float rr = length( vDiscP );
-          // 가장자리는 얇은 막이라 투명하게 사라지고, 가운데는 두꺼워 진한 호박색
-          diffuseColor.a *= smoothstep( 1.0, 0.8, rr );
-          // 얇은 가장자리는 빛이 비쳐 금색, 두꺼운 가운데는 진한 호박색
-          diffuseColor.rgb *= mix( 0.8, 1.25, smoothstep( 0.5, 0.95, rr ) );
+          // 가장자리는 얇은 막이라 투명하게 사라지고, 가운데는 조금 두꺼워 살짝 더 진하다
+          diffuseColor.a *= oilEdge * mix( 1.25, 0.8, smoothstep( 0.3, 0.95, rr ) );
+          diffuseColor.rgb *= mix( 0.85, 1.2, smoothstep( 0.5, 0.95, rr ) );
         }`,
       )
       .replace(
@@ -251,11 +253,14 @@ export class OilPool {
       .replace(
         '#include <opaque_fragment>',
         `{
-          // 비스듬히 볼수록 반사가 강해져 더 진하게 보인다
+          // 비스듬히 볼수록 반사가 강해져 조금 더 진하게 보인다
           float fr = pow( 1.0 - clamp( dot( normal, normalize( vViewPosition ) ), 0.0, 1.0 ), 3.0 );
-          diffuseColor.a = mix( diffuseColor.a, min( 1.0, diffuseColor.a * 1.5 ), fr );
-        }
-        #include <opaque_fragment>`,
-      );
+          float a = clamp( diffuseColor.a * mix( 1.0, 2.0, fr ), 0.0, 1.0 );
+          // 미리 곱한 알파: 색(확산)만 투명도만큼, 반사(스페큘러)는 가장자리 페이드만 걸어 그대로 더한다
+          gl_FragColor = vec4( totalDiffuse * a + totalSpecular * oilEdge * 0.9, a );
+        }`,
+      )
+      // 위에서 이미 알파를 곱했으므로 기본 premultiplied 처리는 뺀다
+      .replace('#include <premultiplied_alpha_fragment>', '');
   }
 }
