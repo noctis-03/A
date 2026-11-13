@@ -30,11 +30,21 @@ const PROFILES: Record<Exclude<QualityLevel, 'auto'>, QualityProfile> = {
   high: { maxPixelRatio: 2, shadows: true, shadowSize: 2048, ao: true, msaa: 4, smaa: true },
 };
 
-export function resolveQuality(level: QualityLevel): { level: Exclude<QualityLevel, 'auto'>; profile: QualityProfile } {
+export const FIXED_LEVELS: Exclude<QualityLevel, 'auto'>[] = ['low', 'mid', 'high'];
+
+/**
+ * cap: 자동일 때 실측 프레임이 낮아서 내려간 상한 (자동에만 적용).
+ * 반환하는 renderScale 은 '낮음'에서도 느릴 때 해상도를 더 줄이는 배율.
+ */
+export function resolveQuality(
+  level: QualityLevel,
+  cap: Exclude<QualityLevel, 'auto'> | null = null,
+): { level: Exclude<QualityLevel, 'auto'>; profile: QualityProfile } {
   let l: Exclude<QualityLevel, 'auto'>;
   if (level === 'auto') {
     const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
     l = coarse || Math.min(window.innerWidth, window.innerHeight) < 600 ? 'mid' : 'high';
+    if (cap && FIXED_LEVELS.indexOf(cap) < FIXED_LEVELS.indexOf(l)) l = cap;
   } else l = level;
   return { level: l, profile: PROFILES[l] };
 }

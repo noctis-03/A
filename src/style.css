@@ -372,7 +372,8 @@ button:focus-visible { outline: 3px solid var(--lantern); outline-offset: 2px; }
 @media (max-width: 1100px) {
   #guide { left: auto; right: max(272px, calc(env(safe-area-inset-right) + 248px)); transform: none; width: min(420px, calc(100% - 300px)); min-width: 0; }
 }
-@media (max-width: 760px), (orientation: portrait) and (max-width: 900px) {
+/* 휴대폰: 세로 화면, 좁은 화면, 그리고 가로로 눕힌 휴대폰(높이 520px 이하)까지 같은 축소 스타일을 쓴다 */
+@media (max-width: 760px), (orientation: portrait) and (max-width: 900px), (orientation: landscape) and (max-height: 520px) {
   #top { left: 12px; right: 12px; top: max(12px, env(safe-area-inset-top)); gap: 8px; }
   #status { flex: 1; min-width: 0; gap: 10px; padding: 6px 12px 6px 6px; }
   .st-badge { width: 32px; height: 32px; border-radius: 10px; }
@@ -459,6 +460,63 @@ button:focus-visible { outline: 3px solid var(--lantern); outline-offset: 2px; }
   #end-unlock .tok { width: 56px; height: 56px; }
   #end-unlock b { font-size: 28px; }
 }
+/*
+ * 휴대폰 가로: 세로용 배치(재료 패널이 아래를 꽉 채움)를 그대로 쓰면 화면 전체가 패널로 덮인다.
+ * 재료 · 버튼은 오른쪽 세로 단, 게이지는 왼쪽 아래 한 줄, 주문서 · 튜토리얼은 왼쪽 위에 두고
+ * 남는 가운데를 3D 화면(웍)에 준다. 카메라는 main.ts 의 updateFraming 이 이 빈 곳에 맞춘다.
+ */
+@media (orientation: landscape) and (max-height: 520px) {
+  #top { left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); top: max(8px, env(safe-area-inset-top)); }
+  #status { flex: 0 1 auto; padding: 4px 12px 4px 4px; }
+  .st-badge { width: 30px; height: 30px; }
+  #book-btn, .icon-btn { height: 40px; }
+  .icon-btn { width: 40px; }
+  #quality { display: flex; }
+  #home-btn { display: grid; }
+  /* 주문서 · 튜토리얼은 상태줄 아래, 재료 단 왼쪽까지 가로로 얇은 띠 */
+  #ticket { left: max(12px, env(safe-area-inset-left)); right: calc(max(12px, env(safe-area-inset-right)) + 300px); top: 56px; width: auto; }
+  .tk-paper { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; padding: 6px 10px; gap: 4px 10px; }
+  .tk-name { font-size: 16px; white-space: nowrap; }
+  .tk-steps { flex-wrap: wrap; gap: 4px; }
+  .tk-step { flex: none; white-space: nowrap; font-size: 12px; padding: 2px 6px 2px 2px; }
+  .tk-pat { grid-column: 1 / -1; }
+  .tk-bar { height: 4px; }
+  #guide { left: max(12px, env(safe-area-inset-left)); right: calc(max(12px, env(safe-area-inset-right)) + 300px); top: 56px; width: auto; min-width: 0; padding: 6px 10px; gap: 4px; }
+  .guide-head, .guide-dots { display: none; }
+  .guide-step b { font-size: 14px; }
+  .guide-step p { font-size: 12px; }
+  #guide-icon { width: 34px; height: 34px; }
+  #guide-icon svg { width: 26px; height: 26px; }
+  #bottom { left: auto; right: max(12px, env(safe-area-inset-right)); top: 58px; bottom: max(8px, env(safe-area-inset-bottom)); width: 288px; justify-content: flex-end; gap: 6px; }
+  #ings { gap: 5px; }
+  #ings button { height: 48px; gap: 2px; border-radius: 10px; }
+  #ings button .tok { width: 22px; height: 22px; }
+  #ings button em { font-size: 11px; }
+  #ings button .cnt { top: -6px; right: -4px; padding: 1px 5px; font-size: 11px; }
+  #actions { grid-template-columns: 48px minmax(0, 1fr) minmax(0, 1.2fr); gap: 6px; }
+  #hud[data-mode="selling"] #actions { grid-template-columns: 48px minmax(0, 1fr); }
+  #taste-btn, #trash, #hud[data-mode="selling"] #trash, #go-sell, #serve { height: 48px; }
+  #taste-btn { font-size: 17px; }
+  #go-sell { font-size: 12px; }
+  #serve span { font-size: 20px; }
+  #gauge, #hud[data-mode="research"] #gauge { left: max(12px, env(safe-area-inset-left)); right: calc(max(12px, env(safe-area-inset-right)) + 300px); bottom: max(8px, env(safe-area-inset-bottom)); padding: 6px 8px; }
+  #hint { left: calc((100% - 300px) / 2); bottom: 62px; max-width: calc(100% - 340px); overflow: hidden; text-overflow: ellipsis; }
+  #toasts { left: calc((100% - 300px) / 2); width: calc(100% - 340px); }
+  #hud::before { height: 90px; background: linear-gradient(0deg, rgba(12, 14, 30, .85), rgba(12, 14, 30, 0)); }
+  /* 로비: 낮은 화면에 맞춰 줄이고, 넘치면 안에서 스크롤 */
+  .lb-col { left: max(24px, env(safe-area-inset-left)); right: auto; width: min(420px, 60%); top: max(14px, env(safe-area-inset-top)); bottom: max(14px, env(safe-area-inset-bottom)); gap: 10px; overflow-y: auto; }
+  .lb-brand { gap: 4px; }
+  .lb-brand h1 { font-size: 52px; }
+  .lb-brand p { margin: 0; font-size: 13px; line-height: 1.4; }
+  .lb-btns { gap: 8px; }
+  .lb-main { padding: 10px 16px; }
+  .lb-main-text b { font-size: 22px; }
+  .lb-ghost { padding: 9px 14px; font-size: 14px; }
+  .lb-save { margin-top: 0; padding: 10px 14px; gap: 8px; }
+  .lb-ings { display: none; }
+  .lb-shade { background: linear-gradient(90deg, rgba(12, 14, 30, .94) 0%, rgba(12, 14, 30, .8) 50%, rgba(12, 14, 30, .25) 85%); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   #flash.on, .tut-pulse, #tut-arrow, .toast, .tosspop { animation: none; }
   .tut-pulse { box-shadow: 0 0 0 3px var(--lantern); }

@@ -18,7 +18,7 @@ import { ParticleRenderer, Particles, type DishStats, type TypeStat } from './ph
 import { buildWorld, Steam } from './scene';
 import { Wok } from './wok';
 import { enableShadows, FireFx, makeKitchenEnv, Post, toonify } from './look';
-import { loadQuality, QUALITY_LABEL, QUALITY_LEVELS, resolveQuality, saveQuality, type QualityLevel, type QualityProfile } from './quality';
+import { FIXED_LEVELS, loadQuality, QUALITY_LABEL, QUALITY_LEVELS, resolveQuality, saveQuality, type QualityLevel, type QualityProfile } from './quality';
 import { T, loadTuning } from './tuning';
 import { DebugPanel, isTyping } from './debug';
 import { OilBottle } from './oil';
@@ -36,6 +36,8 @@ const won = (n: number) => n.toLocaleString('ko-KR');
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
 const SUBSTEP = 1 / 240;
+/** 한 프레임 최대 0.1초 분량 */
+const MAX_SUBSTEPS = 24;
 const GAUGE_MAX = 1.6;
 const SAVE_KEY = 'woktruck.save.v1';
 const TUTORIAL_RECIPE = 'scallion-egg';
@@ -141,7 +143,7 @@ class Game {
   readonly post: Post;
   private camBase = new THREE.Vector3();
   /** 세로 화면 구도: 현재 / 목표 확대(k = 1/tan(fov/2))와 세로 이동(px) */
-  private fit = { k: 0, s: 0, tk: 0, ts: 0, measureIn: 0, on: false };
+  private fit = { k: 0, s: 0, x: 0, tk: 0, ts: 0, tx: 0, measureIn: 0, on: false };
   private fitTmp = new THREE.Vector3();
   private shake = 0;
   private flareCd = 0;
@@ -151,6 +153,10 @@ class Game {
   private tmp = new THREE.Vector3();
   private qualityLevel: QualityLevel = loadQuality();
   private quality: QualityProfile = resolveQuality(this.qualityLevel).profile;
+  /** 자동 품질: 실측 프레임이 낮아 내려간 상한과 추가 해상도 배율 (이번 접속 동안만) */
+  private autoCap: Exclude<QualityLevel, 'auto'> | null = null;
+  private renderScale = 1;
+  private perf = { t: 0, frames: 0, settle: 3 };
   /** 튜토리얼에서 지금 강조 중인 요소들 */
   private pulsing: HTMLElement[] = [];
 
@@ -201,8 +207,9 @@ class Game {
     const cv = this.canvas;
     let lastX = 0;
     let lastY = 0;
-    let lastT = 0;
     let pid = -1;
+    /** 기름통 흔들기 속도: 최근 0.1초 동안의 포인터 이동 (이벤트 빈도와 무관하게) */
+    const trail: { t: number; x: number; y: number }[] = [];
     let holdingOil = false;
     const ndc = new THREE.Vector2();
     const toNdc = (e: PointerEvent) => ndc.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
@@ -212,7 +219,8 @@ class Game {
       cv.setPointerCapture(pid);
       lastX = e.clientX;
       lastY = e.clientY;
-      lastT = e.timeStamp;
+      trail.length = 0;
+      trail.push({ t: e.timeStamp, x: e.clientX, y: e.clientY });
       // 기름통을 누르면 기름통을 들고, 아니면 웍을 잡는다
       holdingOil = this.oil.hitTest(toNdc(e), this.camera);
       if (holdingOil) {
@@ -230,16 +238,19 @@ class Game {
     cv.addEventListener('pointermove', (e) => {
       if (e.pointerId !== pid) return;
       if (holdingOil) {
-        const dt = Math.max(0.004, (e.timeStamp - lastT) / 1000);
-        const speed = Math.hypot(e.clientX - lastX, e.clientY - lastY) / window.innerHeight / dt;
+        // 흔들기 세기 = 기름통이 게임 속에서 움직인 속도 (m/s).
+        // 화면 픽셀 속도를 '그 자리에서 1px 이 몇 m 인지'로 바꿔서, 화면 크기 · 확대와 상관없이 같은 손놀림이면 같은 양이 나온다
+        trail.push({ t: e.timeStamp, x: e.clientX, y: e.clientY });
+        while (trail.length > 2 && e.timeStamp - trail[1].t > 100) trail.shift();
+        let path = 0;
+        for (let i = 1; i < trail.length; i++) path += Math.hypot(trail[i].x - trail[i - 1].x, trail[i].y - trail[i - 1].y);
+        const span = Math.max(30, e.timeStamp - trail[0].t) / 1000;
+        const speed = (path / span) * this.metersPerPx(this.aimPoint);
         this.oil.drag(toNdc(e), this.camera, speed);
-        lastX = e.clientX;
-        lastY = e.clientY;
-        lastT = e.timeStamp;
         return;
       }
-      // 화면 높이 기준으로 정규화: 어느 기기에서나 비슷한 손놀림
-      const s = T.dragSensitivity / window.innerHeight;
+      // 손가락이 화면 속 웍을 같은 비율로 끌도록: 웍 자리에서 1px 이 몇 m 인지로 환산
+      const s = T.dragGain * this.metersPerPx(this.tmp.copy(this.wok.base).add(this.wok.off));
       this.wok.nudge((e.clientX - lastX) * s, (e.clientY - lastY) * s);
       lastX = e.clientX;
       lastY = e.clientY;
@@ -337,9 +348,10 @@ class Game {
 
   /** 품질 단계를 렌더러 · 그림자 · 후처리에 반영하고 버튼 글자를 바꾼다 */
   private applyQuality() {
-    const { level, profile } = resolveQuality(this.qualityLevel);
+    const { level, profile } = resolveQuality(this.qualityLevel, this.autoCap);
     this.quality = profile;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, profile.maxPixelRatio));
+    const scale = this.qualityLevel === 'auto' ? this.renderScale : 1;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, profile.maxPixelRatio) * scale);
     const key = this.world.keyLight;
     if (key.shadow.mapSize.x !== profile.shadowSize) {
       key.shadow.mapSize.set(profile.shadowSize, profile.shadowSize);
@@ -361,10 +373,26 @@ class Game {
     const i = QUALITY_LEVELS.indexOf(this.qualityLevel);
     this.qualityLevel = QUALITY_LEVELS[(i + 1) % QUALITY_LEVELS.length];
     saveQuality(this.qualityLevel);
+    // 자동으로 돌아오면 다시 재기 시작
+    this.autoCap = null;
+    this.renderScale = 1;
+    this.perf.settle = 3;
     this.applyQuality();
     this.resize();
-    const { level } = resolveQuality(this.qualityLevel);
+    const { level } = resolveQuality(this.qualityLevel, this.autoCap);
     this.toast(`그래픽 품질: ${QUALITY_LABEL[this.qualityLevel]}${this.qualityLevel === 'auto' ? ` (${QUALITY_LABEL[level]})` : ''}`, '', '');
+  }
+
+  private readonly aimPoint = new THREE.Vector3(0, 1.09, -0.38);
+  private mppA = new THREE.Vector3();
+  private mppB = new THREE.Vector3();
+
+  /** 월드 지점 p 근처에서 화면 1px 이 몇 m 인지 (가로 기준, 지금 카메라 확대 · 화면 크기 반영) */
+  private metersPerPx(p: THREE.Vector3) {
+    const a = this.mppA.copy(p).project(this.camera);
+    const b = this.mppB.copy(p).setX(p.x + 0.1).project(this.camera);
+    const px = Math.hypot((b.x - a.x) * window.innerWidth, (b.y - a.y) * window.innerHeight) / 2;
+    return 0.1 / Math.max(1e-3, px);
   }
 
   private resize() {
@@ -382,7 +410,8 @@ class Game {
     this.camera.clearViewOffset();
     this.camera.updateProjectionMatrix();
     this.camera.updateMatrixWorld();
-    this.fit.on = portrait;
+    // 세로 화면, 그리고 가로로 눕힌 휴대폰(높이 520 이하: style.css 의 휴대폰 가로 배치와 같은 기준)
+    this.fit.on = portrait || h <= 520;
     this.fit.k = 0;
     this.fit.measureIn = 0;
   }
@@ -393,6 +422,40 @@ class Game {
    * 위쪽 관심 영역(연구: 들고 있는 기름통, 장사: 손님 얼굴)이 띠 위쪽에 오도록
    * 카메라 위치·방향은 그대로 두고 확대(fov)와 화면 세로 이동(view offset)만 맞춘다.
    */
+  /**
+   * 자동 품질: 게임 중 3초마다 평균 fps 를 재서 40 아래면 한 단계씩 낮춘다
+   * (높음 → 중간 → 낮음 → 낮음에서 해상도 80%씩, 최소 60%). 올리지는 않는다 (오르내림 반복 방지).
+   */
+  private watchPerf(raw: number) {
+    const p = this.perf;
+    if (this.qualityLevel !== 'auto' || !this.active || document.hidden || raw > 0.5) {
+      p.t = 0;
+      p.frames = 0;
+      return;
+    }
+    if (p.settle > 0) {
+      p.settle -= raw;
+      return;
+    }
+    p.t += raw;
+    p.frames++;
+    if (p.t < 3) return;
+    const fps = p.frames / p.t;
+    p.t = 0;
+    p.frames = 0;
+    if (fps >= 40) return;
+    const cur = resolveQuality('auto', this.autoCap).level;
+    const i = FIXED_LEVELS.indexOf(cur);
+    if (i > 0) this.autoCap = FIXED_LEVELS[i - 1];
+    else if (this.renderScale > 0.61) this.renderScale = Math.max(0.6, this.renderScale * 0.8);
+    else return;
+    p.settle = 2;
+    this.applyQuality();
+    this.resize();
+    const now = resolveQuality('auto', this.autoCap).level;
+    this.toast(`기기 성능에 맞춰 그래픽을 낮췄어요`, `자동 · ${QUALITY_LABEL[now]}${this.renderScale < 1 ? ` · 해상도 ${Math.round(this.renderScale * 100)}%` : ''}`, '');
+  }
+
   private updateFraming(dt: number) {
     const f = this.fit;
     if (!f.on) return;
@@ -408,19 +471,39 @@ class Game {
         return r.width > 0 && r.height > 0 && getComputedStyle(el).display !== 'none' ? r : null;
       };
       let top = 0;
-      for (const id of ['top', 'ticket', 'guide']) {
-        const r = rect(id);
-        if (r && r.top < H * 0.5) top = Math.max(top, r.bottom);
-      }
       let bottom = H;
-      for (const id of ['gauge', 'bottom', 'hint']) {
-        const r = rect(id);
-        if (r && r.bottom > H * 0.5 && (id !== 'hint' || r.height < 60)) bottom = Math.min(bottom, r.top);
+      let left = 0;
+      let right = W;
+      if (W < H) {
+        // 세로: 위(상태줄 · 주문서 · 튜토리얼)와 아래(게이지 · 재료 · 안내) 사이
+        for (const id of ['top', 'ticket', 'guide']) {
+          const r = rect(id);
+          if (r && r.top < H * 0.5) top = Math.max(top, r.bottom);
+        }
+        for (const id of ['gauge', 'bottom', 'hint']) {
+          const r = rect(id);
+          if (r && r.bottom > H * 0.5 && (id !== 'hint' || r.height < 60)) bottom = Math.min(bottom, r.top);
+        }
+      } else {
+        // 가로 휴대폰: 위 상태줄 · 주문서 · 튜토리얼 띠, 오른쪽 재료 단, 아래 게이지 · 안내
+        for (const id of ['top', 'ticket', 'guide']) {
+          const r = rect(id);
+          if (r && r.top < H * 0.5) top = Math.max(top, r.bottom);
+        }
+        const tray = rect('bottom');
+        if (tray) right = tray.left;
+        for (const id of ['gauge', 'hint']) {
+          const r = rect(id);
+          if (r && r.bottom > H * 0.5 && (id !== 'hint' || r.height < 60)) bottom = Math.min(bottom, r.top);
+        }
+        left += 8;
+        right -= 8;
       }
       top += 10;
       bottom -= 14;
       // 띠가 너무 좁으면(튜토리얼 카드 등) 위쪽 가림은 일부 감수한다
-      if (bottom - top < 220) top = Math.max(0, bottom - 220);
+      const minBand = Math.min(220, H * 0.5);
+      if (bottom - top < minBand) top = Math.max(0, bottom - minBand);
 
       // 카메라 공간 기울기 t = y/(-z), u = x/(-z): fov 와 무관
       const cam = this.camera;
@@ -434,9 +517,9 @@ class Game {
       const sides = [slope(0.56, 0.95, -0.09), slope(-0.3, 1.08, -0.38), slope(0.3, 1.08, -0.38)];
       // 세로로 A~B 가 띠에 꼭 맞는 확대
       let k = (bottom - top) / ((B.t - A.t) * (H / 2));
-      // 가로로 기름통 · 웍 림이 화면 밖으로 나가지 않게
-      const aspect = W / H;
-      for (const sd of sides) k = Math.min(k, (0.92 * aspect) / Math.max(1e-3, sd.u));
+      // 가로로 기름통 · 웍 림이 빈 곳 밖으로 나가지 않게 (화면 중심에서 u·k·H/2 px)
+      const halfW = (right - left) / 2;
+      for (const sd of sides) k = Math.min(k, (0.92 * halfW) / (Math.max(1e-3, sd.u) * (H / 2)));
       // fov 45° ~ 100°
       k = THREE.MathUtils.clamp(k, 1 / Math.tan(THREE.MathUtils.degToRad(50)), 1 / Math.tan(THREE.MathUtils.degToRad(22.5)));
       // 띠 가운데에 A~B 의 가운데가 오게
@@ -444,18 +527,22 @@ class Game {
       const s = mid - (H / 2) * (1 - (k * (A.t + B.t)) / 2);
       f.tk = k;
       f.ts = s;
+      f.tx = (left + right) / 2 - W / 2;
       if (f.k === 0) {
         f.k = k;
         f.s = s;
+        f.x = f.tx;
       }
     }
     const a = 1 - Math.exp(-dt * 5);
     f.k += (f.tk - f.k) * a;
     f.s += (f.ts - f.s) * a;
+    f.x += (f.tx - f.x) * a;
     const fov = THREE.MathUtils.radToDeg(2 * Math.atan(1 / f.k));
-    if (Math.abs(fov - this.camera.fov) > 1e-3 || this.camera.view?.offsetY !== -f.s) {
+    const v = this.camera.view;
+    if (Math.abs(fov - this.camera.fov) > 1e-3 || v?.offsetY !== -f.s || v?.offsetX !== -f.x) {
       this.camera.fov = fov;
-      this.camera.setViewOffset(W, H, 0, -f.s, W, H);
+      this.camera.setViewOffset(W, H, -f.x, -f.s, W, H);
     }
   }
 
@@ -1449,16 +1536,20 @@ class Game {
   private last = performance.now();
   private frame() {
     const now = performance.now();
-    const dt = Math.min(0.05, (now - this.last) / 1000);
+    const raw = (now - this.last) / 1000;
+    this.watchPerf(raw);
+    // 느린 기기(10fps 까지)에서도 게임 시간이 실제 시간대로 흐르게: 한 프레임에 최대 0.1초.
+    // (예전엔 0.05초로 잘라 20fps 아래에선 게임 전체가 슬로모션이 되어 손님 인내심 등이 기기마다 달랐다)
+    const dt = Math.min(0.1, raw);
     this.last = now;
     this.acc += dt;
     let n = 0;
-    while (this.acc >= SUBSTEP && n < 16) {
+    while (this.acc >= SUBSTEP && n < MAX_SUBSTEPS) {
       this.stepPhysics(SUBSTEP);
       this.acc -= SUBSTEP;
       n++;
     }
-    if (n === 16) this.acc = 0;
+    if (n === MAX_SUBSTEPS) this.acc = 0;
     this.update(dt);
     const key = this.world.keyLight;
     key.castShadow = this.quality.shadows && T.shadows > 0;

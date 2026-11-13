@@ -38,7 +38,7 @@ export const DEFAULTS = {
   oilMin: 0.7,
   oilMax: 1.4,
   oilFlow: 40,
-  oilShakeMin: 0.35,
+  oilShakeMinMs: 0.5,
   oilDrop: 0.5,
   oilDryFriction: 0.9,
   oilDryBurn: 0.4,
@@ -50,7 +50,7 @@ export const DEFAULTS = {
   orderPenalty: 0.1,
 
   // ── 웍 조작 ──
-  dragSensitivity: 1.15,
+  dragGain: 0.75,
   wokStiffness: 38,
   wokReturnStiffness: 15,
   wokTiltGain: 0.13,
@@ -177,7 +177,7 @@ export const GROUPS: { name: string; items: [TuneKey, Meta][] }[] = [
       ['oilMin', { label: '적정량 최소 (적정 대비 비율)', min: 0, max: 1.5, step: 0.05 }],
       ['oilMax', { label: '적정량 최대 (적정 대비 비율)', min: 0.5, max: 3, step: 0.05 }],
       ['oilFlow', { label: '흔들 때 나오는 양 (방울/초, 최대)', min: 1, max: 150, step: 1 }],
-      ['oilShakeMin', { label: '기름이 나오기 시작하는 흔들기 세기', min: 0, max: 4, step: 0.05 }],
+      ['oilShakeMinMs', { label: '기름이 나오기 시작하는 흔들기 속도 (m/s)', min: 0, max: 6, step: 0.05 }],
       ['oilDrop', { label: '한 방울 양 (ml)', min: 0.05, max: 3, step: 0.05 }],
       ['oilDryFriction', { label: '기름 없을 때 더 달라붙는 정도', min: 0, max: 3, step: 0.05 }],
       ['oilDryBurn', { label: '기름 없을 때 빨리 타는 정도', min: 0, max: 1.5, step: 0.05 }],
@@ -195,7 +195,7 @@ export const GROUPS: { name: string; items: [TuneKey, Meta][] }[] = [
   {
     name: '웍 조작',
     items: [
-      ['dragSensitivity', { label: '드래그 감도', min: 0.3, max: 3, step: 0.05 }],
+      ['dragGain', { label: '드래그 감도 (손가락 대비 화면 속 웍 이동 비율)', min: 0.2, max: 2, step: 0.05 }],
       ['wokStiffness', { label: '웍 반응 속도 (잡았을 때)', min: 5, max: 80, step: 1 }],
       ['wokReturnStiffness', { label: '웍 복귀 속도 (놓았을 때)', min: 2, max: 60, step: 1 }],
       ['wokTiltGain', { label: '기울기 민감도', min: 0, max: 0.5, step: 0.005 }],

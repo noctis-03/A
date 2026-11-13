@@ -21,7 +21,7 @@ export class OilBottle {
   private target = new THREE.Vector3();
   private vel = new THREE.Vector3();
   private tilt = 0;
-  /** 흔드는 세기 (포인터 속도, 화면 높이/초) */
+  /** 흔드는 세기: 기름통의 게임 속 이동 속도 (m/s) */
   private shake = 0;
   private emitAcc = 0;
   private spout = new THREE.Vector3(0, 0.27, 0);
@@ -148,14 +148,15 @@ export class OilBottle {
     // 들고 있으면 웍 쪽(왼쪽 아래)으로 기울여 붓는 자세, 흔들면 더 흔들림
     const tiltTarget = this.held ? 2.1 : 0;
     this.tilt += (tiltTarget - this.tilt) * Math.min(1, dt * 10);
-    const wobble = this.held ? Math.sin(performance.now() * 0.03) * Math.min(0.25, this.shake * 0.08) : 0;
+    const wobble = this.held ? Math.sin(performance.now() * 0.03) * Math.min(0.25, this.shake * 0.055) : 0;
     this.body.rotation.set(0, 0, this.tilt + wobble - this.vel.x * 0.15);
 
     // 흔드는 세기만큼 방울이 나온다
     this.shake *= Math.exp(-dt * 4);
     if (this.held && this.tilt > 1.4) {
-      const over = Math.max(0, this.shake - T.oilShakeMin);
-      const rate = Math.min(T.oilFlow, over * T.oilFlow * 0.6);
+      // shake 는 기름통의 게임 속 속도 (m/s)
+      const over = Math.max(0, this.shake - T.oilShakeMinMs);
+      const rate = Math.min(T.oilFlow, over * T.oilFlow * 0.41);
       this.emitAcc += rate * dt;
       const sp = this.body.localToWorld(this.tmp.copy(this.spout));
       while (this.emitAcc >= 1) {
