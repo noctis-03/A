@@ -18,6 +18,7 @@ import { ParticleRenderer, Particles, type DishStats, type TypeStat } from './ph
 import { buildWorld, Steam } from './scene';
 import { Wok } from './wok';
 import { enableShadows, FireFx, makeKitchenEnv, Post, toonify } from './look';
+import { loadQuality, QUALITY_LABEL, QUALITY_LEVELS, resolveQuality, saveQuality, type QualityLevel, type QualityProfile } from './quality';
 import { T, loadTuning } from './tuning';
 import { DebugPanel, isTyping } from './debug';
 import { OilBottle } from './oil';
@@ -145,16 +146,18 @@ class Game {
   private canvas = $<HTMLCanvasElement>('game');
   private ingButtons = new Map<IngId, HTMLButtonElement>();
   private tmp = new THREE.Vector3();
+  private qualityLevel: QualityLevel = loadQuality();
+  private quality: QualityProfile = resolveQuality(this.qualityLevel).profile;
   /** 튜토리얼에서 지금 강조 중인 요소들 */
   private pulsing: HTMLElement[] = [];
 
   constructor() {
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.wok.setEnvMap(makeKitchenEnv(this.renderer));
     this.post = new Post(this.renderer, this.world.scene, this.camera);
+    this.applyQuality();
     this.world.scene.add(this.wok.group, this.particleView.group);
     enableShadows(this.wok.group);
     enableShadows(this.oil.group);
@@ -311,6 +314,8 @@ class Game {
       for (const id of ['mute', 'lobby-mute']) $(id).innerHTML = ICON(muted ? 'mute' : 'sound');
     };
     $('mute').addEventListener('click', mute);
+    $('quality').addEventListener('click', () => this.cycleQuality());
+    $('lobby-quality').addEventListener('click', () => this.cycleQuality());
     $('lobby-mute').addEventListener('click', () => {
       this.sfx.init();
       mute();
@@ -321,6 +326,38 @@ class Game {
         this.openBook();
       });
     }
+  }
+
+  /** 품질 단계를 렌더러 · 그림자 · 후처리에 반영하고 버튼 글자를 바꾼다 */
+  private applyQuality() {
+    const { level, profile } = resolveQuality(this.qualityLevel);
+    this.quality = profile;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, profile.maxPixelRatio));
+    const key = this.world.keyLight;
+    if (key.shadow.mapSize.x !== profile.shadowSize) {
+      key.shadow.mapSize.set(profile.shadowSize, profile.shadowSize);
+      key.shadow.map?.dispose();
+      key.shadow.map = null;
+    }
+    this.post.setQuality(profile);
+    const label = this.qualityLevel === 'auto' ? `자동 · ${QUALITY_LABEL[level]}` : QUALITY_LABEL[level];
+    for (const id of ['quality', 'lobby-quality']) {
+      const b = document.getElementById(id);
+      if (!b) continue;
+      b.querySelector('b')!.textContent = QUALITY_LABEL[this.qualityLevel];
+      b.title = `그래픽 품질: ${label}`;
+      b.setAttribute('aria-label', `그래픽 품질 바꾸기 (지금 ${label})`);
+    }
+  }
+
+  private cycleQuality() {
+    const i = QUALITY_LEVELS.indexOf(this.qualityLevel);
+    this.qualityLevel = QUALITY_LEVELS[(i + 1) % QUALITY_LEVELS.length];
+    saveQuality(this.qualityLevel);
+    this.applyQuality();
+    this.resize();
+    const { level } = resolveQuality(this.qualityLevel);
+    this.toast(`그래픽 품질: ${QUALITY_LABEL[this.qualityLevel]}${this.qualityLevel === 'auto' ? ` (${QUALITY_LABEL[level]})` : ''}`, '', '');
   }
 
   private resize() {
@@ -1076,7 +1113,14 @@ class Game {
       this.flareCd = 0.07;
     }
     this.fire.update(dt);
-    this.world.fireLight.intensity = 0.4 + flare * 0.5 + hot * 1.2 + 0.08 * Math.sin(this.time * 30);
+    // 화구 불빛: 겹친 사인 + 잔떨림으로 불규칙하게 일렁이고, 셀수록 노랗게
+    const t = this.time;
+    const flick =
+      (0.07 * Math.sin(t * 31) + 0.05 * Math.sin(t * 17.3 + 1.1) + 0.04 * Math.sin(t * 53.7 + 2.3) + (Math.random() - 0.5) * 0.06) *
+      T.fireFlicker;
+    const fl = this.world.fireLight;
+    fl.intensity = Math.max(0, 0.4 + flare * 0.5 + hot * 1.2 + flick * (1 + hot));
+    fl.color.setRGB(1, 0.5 + 0.12 * hot + flick * 0.4, 0.18 + 0.05 * hot);
 
     // 카메라 흔들림
     this.shake = Math.max(0, this.shake - dt * 0.03);
@@ -1329,7 +1373,8 @@ class Game {
     if (n === 16) this.acc = 0;
     this.update(dt);
     const key = this.world.keyLight;
-    key.castShadow = T.shadows > 0;
+    key.castShadow = this.quality.shadows && T.shadows > 0;
+    this.world.tick(this.time);
     key.intensity = this.world.keyBase * T.keyLight;
     this.post.render();
   }

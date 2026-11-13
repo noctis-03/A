@@ -4,47 +4,117 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
+import type { QualityProfile } from './quality';
 import { T } from './tuning';
 
 // ───────────────────────── 카툰(셀) 셰이딩 ─────────────────────────
 
-/** 명암을 3단계로 끊는 그라디언트 */
+/**
+ * 명암을 4단계로 끊는 그라디언트. 어두운 단계일수록 밤하늘 남보라로 물든다
+ * (회색으로 탁해지는 대신 그림처럼 보이게). 색은 셰이더에서 rgb 그대로 쓴다.
+ */
+const GRAD_GRAY = [
+  [62, 62, 62],
+  [128, 128, 128],
+  [198, 198, 198],
+  [255, 255, 255],
+];
+const GRAD_TINT = [
+  [54, 44, 96],
+  [116, 104, 152],
+  [196, 188, 208],
+  [255, 252, 246],
+];
 export const toonGradient = (() => {
-  const steps = [70, 160, 255];
-  const data = new Uint8Array(steps.length * 4);
-  steps.forEach((v, i) => data.set([v, v, v, 255], i * 4));
-  const tex = new THREE.DataTexture(data, steps.length, 1, THREE.RGBAFormat);
+  const data = new Uint8Array(GRAD_GRAY.length * 4);
+  const tex = new THREE.DataTexture(data, GRAD_GRAY.length, 1, THREE.RGBAFormat);
   tex.minFilter = THREE.NearestFilter;
   tex.magFilter = THREE.NearestFilter;
   tex.generateMipmaps = false;
-  tex.needsUpdate = true;
   return tex;
 })();
+let gradTint = -1;
+function setShadowTint(k: number) {
+  if (k === gradTint) return;
+  gradTint = k;
+  const d = toonGradient.image.data as Uint8Array;
+  GRAD_GRAY.forEach((g, i) => {
+    const t = GRAD_TINT[i];
+    for (let c = 0; c < 3; c++) d[i * 4 + c] = Math.round(g[c] + (t[c] - g[c]) * k);
+    d[i * 4 + 3] = 255;
+  });
+  toonGradient.needsUpdate = true;
+}
+setShadowTint(1);
 
-export function toonMat(color: THREE.ColorRepresentation, extra: THREE.MeshToonMaterialParameters = {}) {
-  return new THREE.MeshToonMaterial({ color, gradientMap: toonGradient, ...extra });
+/** 카툰 재질 공용 유니폼: 가장자리 림라이트 */
+export const toonUniforms = {
+  rimStrength: { value: 0.22 },
+  rimColor: { value: new THREE.Color(1.0, 0.78, 0.55) },
+};
+
+const GRADIENT_RGB = THREE.ShaderChunk.gradientmap_pars_fragment.replace(
+  'return vec3( texture2D( gradientMap, coord ).r );',
+  'return texture2D( gradientMap, coord ).rgb;',
+);
+
+/**
+ * rim: 림라이트를 받을지. 벽·땅처럼 큰 평면은 비스듬히 보이면 면 전체가
+ * '가장자리'가 되어 하얗게 뜨므로, 작은 물체에만 켠다.
+ */
+function patchToon(m: THREE.MeshToonMaterial, rim: boolean) {
+  const rimOn = { value: rim ? 1 : 0 };
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.rimOn = rimOn;
+    shader.uniforms.rimStrength = toonUniforms.rimStrength;
+    shader.uniforms.rimColor = toonUniforms.rimColor;
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <gradientmap_pars_fragment>', `${GRADIENT_RGB}\nuniform float rimStrength;\nuniform float rimOn;\nuniform vec3 rimColor;`)
+      .replace(
+        '#include <opaque_fragment>',
+        `{
+          // 프레넬 림라이트: 실루엣 가장자리에 따뜻한 역광이 돈다 (위를 향한 면일수록 조금 더)
+          vec3 rv = normalize( vViewPosition );
+          float fres = pow( 1.0 - clamp( dot( normal, -rv ), 0.0, 1.0 ), 3.0 );
+          float rimBand = smoothstep( 0.45, 0.6, fres );
+          outgoingLight += rimColor * rimBand * rimStrength * rimOn * ( 0.35 + 0.65 * diffuseColor.rgb );
+        }
+        #include <opaque_fragment>`,
+      );
+  };
+  m.customProgramCacheKey = () => 'toon-rim';
+  return m;
 }
 
-const converted = new WeakMap<THREE.Material, THREE.Material>();
+export function toonMat(color: THREE.ColorRepresentation, extra: THREE.MeshToonMaterialParameters = {}, rim = true) {
+  return patchToon(new THREE.MeshToonMaterial({ color, gradientMap: toonGradient, ...extra }), rim);
+}
 
-function toToon(m: THREE.Material): THREE.Material {
+const converted = [new WeakMap<THREE.Material, THREE.Material>(), new WeakMap<THREE.Material, THREE.Material>()];
+
+function toToon(m: THREE.Material, rim: boolean): THREE.Material {
   if (!(m instanceof THREE.MeshStandardMaterial)) return m;
   // 금속 웍처럼 반사가 중요한 재질은 PBR 로 남긴다
   if (m.userData.keepPbr) return m;
-  let t = converted.get(m);
+  const cache = converted[rim ? 1 : 0];
+  let t = cache.get(m);
   if (!t) {
     const color = m.color.clone();
     t = toonMat(color, {
       map: m.map,
       normalMap: m.normalMap,
+      bumpMap: m.bumpMap,
+      bumpScale: m.bumpScale,
       emissive: m.emissive,
       emissiveMap: m.emissiveMap,
       emissiveIntensity: m.emissiveIntensity,
       side: m.side,
       transparent: m.transparent,
       opacity: m.opacity,
-    });
-    converted.set(m, t);
+    }, rim);
+    cache.set(m, t);
   }
   return t;
 }
@@ -151,7 +221,10 @@ export function toonify(root: THREE.Object3D, outline = true) {
   });
   for (const mesh of meshes) {
     const orig = mesh.material as THREE.Material;
-    mesh.material = Array.isArray(mesh.material) ? mesh.material.map(toToon) : toToon(orig);
+    mesh.geometry.computeBoundingSphere();
+    const r = (mesh.geometry.boundingSphere?.radius ?? 0) * Math.max(mesh.scale.x, mesh.scale.y, mesh.scale.z);
+    const rim = r < 0.5 && !NO_OUTLINE.has(mesh.geometry.type) && mesh.geometry.type !== 'BoxGeometry';
+    mesh.material = Array.isArray(mesh.material) ? mesh.material.map((x) => toToon(x, rim)) : toToon(orig, rim);
     if (!outline || !(orig instanceof THREE.MeshStandardMaterial) || orig.transparent) continue;
     if (orig.userData.noOutline) continue;
     if (NO_OUTLINE.has(mesh.geometry.type) || (mesh as THREE.InstancedMesh).isInstancedMesh) continue;
@@ -235,14 +308,58 @@ class SceneAOPass extends GTAOPass {
   }
 }
 
+// ───────────────────────── 색보정 · 비네팅 ─────────────────────────
+
+/**
+ * 톤매핑 뒤(sRGB)에서 거는 마무리 보정: 대비 · 채도, 어두운 곳은 남색 · 밝은 곳은
+ * 등불 주황으로 물들이는 스플릿 톤, 가장자리 비네팅, 아주 옅은 필름 그레인.
+ */
+const GradeShader = {
+  uniforms: {
+    tDiffuse: { value: null as THREE.Texture | null },
+    contrast: { value: 1.06 },
+    saturation: { value: 1.08 },
+    split: { value: 1 },
+    vignette: { value: 0.35 },
+    grain: { value: 0.018 },
+    aspect: { value: 16 / 9 },
+    time: { value: 0 },
+  },
+  vertexShader: `varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 ); }`,
+  fragmentShader: `uniform sampler2D tDiffuse;
+    uniform float contrast, saturation, split, vignette, grain, aspect, time;
+    varying vec2 vUv;
+    float hash( vec2 p ) { return fract( sin( dot( p, vec2( 12.9898, 78.233 ) ) ) * 43758.5453 ); }
+    void main() {
+      vec4 tex = texture2D( tDiffuse, vUv );
+      vec3 c = tex.rgb;
+      c = ( c - 0.5 ) * contrast + 0.5;
+      float l = dot( c, vec3( 0.299, 0.587, 0.114 ) );
+      c = mix( vec3( l ), c, saturation );
+      float sh = 1.0 - smoothstep( 0.0, 0.45, l );
+      float hi = smoothstep( 0.55, 1.0, l );
+      c += split * ( vec3( -0.01, 0.0, 0.045 ) * sh + vec3( 0.04, 0.018, -0.02 ) * hi );
+      vec2 d = vUv - 0.5;
+      d.x *= aspect;
+      float v = smoothstep( 0.95, 0.3, length( d ) );
+      c *= mix( 1.0 - vignette, 1.0, v );
+      c += ( hash( vUv * 1024.0 + fract( time ) * 97.0 ) - 0.5 ) * grain;
+      gl_FragColor = vec4( clamp( c, 0.0, 1.0 ), tex.a );
+    }`,
+};
+
 // ───────────────────────── 블룸 ─────────────────────────
 
 export class Post {
   readonly composer: EffectComposer;
   readonly bloom: UnrealBloomPass;
   readonly ao: SceneAOPass;
+  readonly grade: ShaderPass;
+  readonly smaa: SMAAPass;
   private size = new THREE.Vector2();
   private aoKey = '';
+  private quality: QualityProfile | null = null;
 
   constructor(private renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -257,6 +374,23 @@ export class Post {
     this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.7, 0.5, 1.0);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
+    this.grade = new ShaderPass(GradeShader);
+    this.composer.addPass(this.grade);
+    // MSAA 가 못 잡는 셰이딩 경계(카툰 단계 · 림 · AO)의 계단은 SMAA 로 한 번 더 다듬는다
+    this.smaa = new SMAAPass(1, 1);
+    this.composer.addPass(this.smaa);
+  }
+
+  /** 품질 단계 적용: MSAA 샘플 수 · AO · SMAA */
+  setQuality(q: QualityProfile) {
+    const prev = this.quality;
+    this.quality = q;
+    if (!prev || prev.msaa !== q.msaa) {
+      for (const rt of [this.composer.renderTarget1, this.composer.renderTarget2]) {
+        rt.samples = q.msaa;
+        rt.dispose();
+      }
+    }
   }
 
   setSize(w: number, h: number, ratio: number) {
@@ -278,7 +412,19 @@ export class Post {
     this.bloom.strength = T.bloomStrength;
     this.bloom.radius = T.bloomRadius;
     this.bloom.threshold = T.bloomThreshold;
-    this.ao.enabled = T.aoStrength > 0.001;
+    const q = this.quality;
+    this.ao.enabled = !!q?.ao && T.aoStrength > 0.001;
+    this.smaa.enabled = q ? q.smaa : true;
+    setShadowTint(T.shadowTint);
+    toonUniforms.rimStrength.value = T.rimStrength;
+    const g = this.grade.uniforms;
+    g.contrast.value = T.gradeContrast;
+    g.saturation.value = T.gradeSaturation;
+    g.split.value = T.gradeSplit;
+    g.vignette.value = T.vignette;
+    g.grain.value = T.grain;
+    g.aspect.value = size.x / Math.max(1, size.y);
+    g.time.value = performance.now() / 1000;
     this.ao.blendIntensity = T.aoStrength;
     const key = `${T.aoRadius}`;
     if (key !== this.aoKey) {
