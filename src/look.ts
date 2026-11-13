@@ -298,6 +298,13 @@ export function enableShadows(root: THREE.Object3D) {
  * 그 주위에 얼룩이 생기지 않는다.
  */
 class SceneAOPass extends GTAOPass {
+  constructor(scene: THREE.Scene, camera: THREE.Camera, w: number, h: number) {
+    super(scene, camera, w, h);
+    // 웍 안쪽처럼 뒷면(BackSide)으로 그리는 면도 깊이 · 노멀에 들어가야 한다.
+    // 앞면만 그리면 AO 가 웍을 '뚫고' 아래 화구 받침을 보고 그 틈새 그림자를 웍 안에 그린다
+    this.normalMaterial.side = THREE.DoubleSide;
+  }
+
   overrideVisibility() {
     super.overrideVisibility();
     this.scene.traverse((o) => {
