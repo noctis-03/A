@@ -17,7 +17,9 @@ import {
 import { ParticleRenderer, Particles, type DishStats, type TypeStat } from './physics';
 import { buildWorld, Steam } from './scene';
 import { Wok } from './wok';
-import { FireFx, Post, toonify } from './look';
+import { enableShadows, FireFx, makeKitchenEnv, Post, toonify } from './look';
+import { checkRequests, makeOrder, reqLabel, reqState, type Order } from './requests';
+import { FIXED_LEVELS, loadQuality, QUALITY_LABEL, QUALITY_LEVELS, resolveQuality, saveQuality, type QualityLevel, type QualityProfile } from './quality';
 import { T, loadTuning } from './tuning';
 import { DebugPanel, isTyping } from './debug';
 import { OilBottle } from './oil';
@@ -35,6 +37,33 @@ const won = (n: number) => n.toLocaleString('ko-KR');
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
 const SUBSTEP = 1 / 240;
+
+type SafeId = 'msaa' | 'shadows' | 'ao' | 'bloom';
+const SAFE_STEPS: { id: SafeId; label: string }[] = [
+  { id: 'msaa', label: '안티에일리어싱(MSAA)' },
+  { id: 'shadows', label: '그림자' },
+  { id: 'ao', label: '구석 어둡게(AO)' },
+  { id: 'bloom', label: '빛 번짐(블룸)' },
+];
+// v2: 집 주방 검은 화면(빛기둥 NaN)을 고치기 전에 자동으로 꺼진 기능은 잊는다
+const SAFE_KEY = 'woktruck.gfxsafe.v2';
+function loadSafe(): SafeId[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(SAFE_KEY) ?? '[]');
+    return Array.isArray(v) ? v.filter((x): x is SafeId => SAFE_STEPS.some((s) => s.id === x)) : [];
+  } catch {
+    return [];
+  }
+}
+function saveSafe(v: SafeId[]) {
+  try {
+    localStorage.setItem(SAFE_KEY, JSON.stringify(v));
+  } catch {
+    /* 저장 불가 환경 */
+  }
+}
+/** 한 프레임 최대 0.1초 분량 */
+const MAX_SUBSTEPS = 24;
 const GAUGE_MAX = 1.6;
 const SAVE_KEY = 'woktruck.save.v1';
 const TUTORIAL_RECIPE = 'scallion-egg';
@@ -59,6 +88,10 @@ interface Verdict {
   toss: number;
   tossPay: number;
   comment: string;
+  /** 요청을 다 지켜서 받은 추가 팁 */
+  reqTip: number;
+  /** 요청이 있었고 다 지켰는지 (요청 없음: null) */
+  reqOk: boolean | null;
 }
 
 function readSave(): Save | null {
@@ -139,20 +172,42 @@ class Game {
   readonly debug = new DebugPanel();
   readonly post: Post;
   private camBase = new THREE.Vector3();
+  /** 세로 화면 구도: 현재 / 목표 확대(k = 1/tan(fov/2))와 세로 이동(px) */
+  private fit = { k: 0, s: 0, x: 0, tk: 0, ts: 0, tx: 0, measureIn: 0, on: false };
+  private fitTmp = new THREE.Vector3();
   private shake = 0;
   private flareCd = 0;
   readonly sfx = new Sfx();
   private canvas = $<HTMLCanvasElement>('game');
   private ingButtons = new Map<IngId, HTMLButtonElement>();
   private tmp = new THREE.Vector3();
+  private qualityLevel: QualityLevel = loadQuality();
+  private quality: QualityProfile = resolveQuality(this.qualityLevel).profile;
+  /** 자동 품질: 실측 프레임이 낮아 내려간 상한과 추가 해상도 배율 (이번 접속 동안만) */
+  private autoCap: Exclude<QualityLevel, 'auto'> | null = null;
+  private renderScale = 1;
+  private perf = { t: 0, frames: 0, settle: 3 };
+  /**
+   * 검은 화면 감지 후 끈 기능 (이 브라우저에 기억). 화면 가운데 픽셀이 연달아 완전한 검정이면
+   * MSAA → 그림자 → AO → 블룸 순서로 하나씩 끈다. 배경색이 검정이 아니라서 정상 화면과 헷갈리지 않는다.
+   */
+  private safe = loadSafe();
+  private black = { wait: 2, hits: 0, clean: 0, buf: new Uint8Array(4) };
   /** 튜토리얼에서 지금 강조 중인 요소들 */
   private pulsing: HTMLElement[] = [];
 
   constructor() {
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    const env = makeKitchenEnv(this.renderer);
+    this.wok.setEnvMap(env);
+    this.oil.setEnvMap(env);
     this.post = new Post(this.renderer, this.world.scene, this.camera);
+    this.applyQuality();
     this.world.scene.add(this.wok.group, this.particleView.group);
+    enableShadows(this.wok.group);
+    enableShadows(this.oil.group);
     this.resize();
     window.addEventListener('resize', () => this.resize());
     this.bindInput();
@@ -160,6 +215,8 @@ class Game {
     this.debug.setInfo(() => this.debugInfo());
     this.showLobby();
     this.renderer.setAnimationLoop(() => this.frame());
+    // 개발 서버에서만: 콘솔 · 자동 테스트용 핸들 (배포 빌드에서는 빠진다)
+    if (import.meta.env.DEV) (window as unknown as { __game: Game }).__game = this;
     // 첫 로딩: 덮인 상태에서 시작해 로비가 드러난다
     this.wipe.run({ kind: 'lobby', icon: 'logo', kicker: 'WOK WOK!', title: '웍웍!', sub: '불맛 볶음밥 푸드트럭' }, () => {}, { covered: true, hold: 1100 });
   }
@@ -186,8 +243,9 @@ class Game {
     const cv = this.canvas;
     let lastX = 0;
     let lastY = 0;
-    let lastT = 0;
     let pid = -1;
+    /** 기름통 흔들기 속도: 최근 0.1초 동안의 포인터 이동 (이벤트 빈도와 무관하게) */
+    const trail: { t: number; x: number; y: number }[] = [];
     let holdingOil = false;
     const ndc = new THREE.Vector2();
     const toNdc = (e: PointerEvent) => ndc.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
@@ -197,7 +255,8 @@ class Game {
       cv.setPointerCapture(pid);
       lastX = e.clientX;
       lastY = e.clientY;
-      lastT = e.timeStamp;
+      trail.length = 0;
+      trail.push({ t: e.timeStamp, x: e.clientX, y: e.clientY });
       // 기름통을 누르면 기름통을 들고, 아니면 웍을 잡는다
       holdingOil = this.oil.hitTest(toNdc(e), this.camera);
       if (holdingOil) {
@@ -215,16 +274,19 @@ class Game {
     cv.addEventListener('pointermove', (e) => {
       if (e.pointerId !== pid) return;
       if (holdingOil) {
-        const dt = Math.max(0.004, (e.timeStamp - lastT) / 1000);
-        const speed = Math.hypot(e.clientX - lastX, e.clientY - lastY) / window.innerHeight / dt;
+        // 흔들기 세기 = 기름통이 게임 속에서 움직인 속도 (m/s).
+        // 화면 픽셀 속도를 '그 자리에서 1px 이 몇 m 인지'로 바꿔서, 화면 크기 · 확대와 상관없이 같은 손놀림이면 같은 양이 나온다
+        trail.push({ t: e.timeStamp, x: e.clientX, y: e.clientY });
+        while (trail.length > 2 && e.timeStamp - trail[1].t > 100) trail.shift();
+        let path = 0;
+        for (let i = 1; i < trail.length; i++) path += Math.hypot(trail[i].x - trail[i - 1].x, trail[i].y - trail[i - 1].y);
+        const span = Math.max(30, e.timeStamp - trail[0].t) / 1000;
+        const speed = (path / span) * this.metersPerPx(this.aimPoint);
         this.oil.drag(toNdc(e), this.camera, speed);
-        lastX = e.clientX;
-        lastY = e.clientY;
-        lastT = e.timeStamp;
         return;
       }
-      // 화면 높이 기준으로 정규화: 어느 기기에서나 비슷한 손놀림
-      const s = T.dragSensitivity / window.innerHeight;
+      // 손가락이 화면 속 웍을 같은 비율로 끌도록: 웍 자리에서 1px 이 몇 m 인지로 환산
+      const s = T.dragGain * this.metersPerPx(this.tmp.copy(this.wok.base).add(this.wok.off));
       this.wok.nudge((e.clientX - lastX) * s, (e.clientY - lastY) * s);
       lastX = e.clientX;
       lastY = e.clientY;
@@ -306,6 +368,8 @@ class Game {
       for (const id of ['mute', 'lobby-mute']) $(id).innerHTML = ICON(muted ? 'mute' : 'sound');
     };
     $('mute').addEventListener('click', mute);
+    $('quality').addEventListener('click', () => this.cycleQuality());
+    $('lobby-quality').addEventListener('click', () => this.cycleQuality());
     $('lobby-mute').addEventListener('click', () => {
       this.sfx.init();
       mute();
@@ -316,6 +380,66 @@ class Game {
         this.openBook();
       });
     }
+  }
+
+  /** 품질 단계를 렌더러 · 그림자 · 후처리에 반영하고 버튼 글자를 바꾼다 */
+  private applyQuality() {
+    const resolved = resolveQuality(this.qualityLevel, this.autoCap);
+    const level = resolved.level;
+    const safe = this.safe;
+    const profile: QualityProfile = {
+      ...resolved.profile,
+      msaa: safe.includes('msaa') ? 0 : resolved.profile.msaa,
+      shadows: safe.includes('shadows') ? false : resolved.profile.shadows,
+      ao: safe.includes('ao') ? false : resolved.profile.ao,
+    };
+    this.quality = profile;
+    this.post.bloom.enabled = !safe.includes('bloom');
+    this.black.clean = 0;
+    this.black.wait = 2;
+    const scale = this.qualityLevel === 'auto' ? this.renderScale : 1;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, profile.maxPixelRatio) * scale);
+    const key = this.world.keyLight;
+    if (key.shadow.mapSize.x !== profile.shadowSize) {
+      key.shadow.mapSize.set(profile.shadowSize, profile.shadowSize);
+      key.shadow.map?.dispose();
+      key.shadow.map = null;
+    }
+    this.post.setQuality(profile);
+    const label = this.qualityLevel === 'auto' ? `자동 · ${QUALITY_LABEL[level]}` : QUALITY_LABEL[level];
+    for (const id of ['quality', 'lobby-quality']) {
+      const b = document.getElementById(id);
+      if (!b) continue;
+      b.querySelector('b')!.textContent = QUALITY_LABEL[this.qualityLevel];
+      b.title = `그래픽 품질: ${label}`;
+      b.setAttribute('aria-label', `그래픽 품질 바꾸기 (지금 ${label})`);
+    }
+  }
+
+  private cycleQuality() {
+    const i = QUALITY_LEVELS.indexOf(this.qualityLevel);
+    this.qualityLevel = QUALITY_LEVELS[(i + 1) % QUALITY_LEVELS.length];
+    saveQuality(this.qualityLevel);
+    // 자동으로 돌아오면 다시 재기 시작
+    this.autoCap = null;
+    this.renderScale = 1;
+    this.perf.settle = 3;
+    this.applyQuality();
+    this.resize();
+    const { level } = resolveQuality(this.qualityLevel, this.autoCap);
+    this.toast(`그래픽 품질: ${QUALITY_LABEL[this.qualityLevel]}${this.qualityLevel === 'auto' ? ` (${QUALITY_LABEL[level]})` : ''}`, '', '');
+  }
+
+  private readonly aimPoint = new THREE.Vector3(0, 1.09, -0.38);
+  private mppA = new THREE.Vector3();
+  private mppB = new THREE.Vector3();
+
+  /** 월드 지점 p 근처에서 화면 1px 이 몇 m 인지 (가로 기준, 지금 카메라 확대 · 화면 크기 반영) */
+  private metersPerPx(p: THREE.Vector3) {
+    const a = this.mppA.copy(p).project(this.camera);
+    const b = this.mppB.copy(p).setX(p.x + 0.1).project(this.camera);
+    const px = Math.hypot((b.x - a.x) * window.innerWidth, (b.y - a.y) * window.innerHeight) / 2;
+    return 0.1 / Math.max(1e-3, px);
   }
 
   private resize() {
@@ -330,7 +454,195 @@ class Game {
     this.camera.lookAt(0, 1.08, -0.6);
     this.camBase.copy(this.camera.position);
     this.post.setSize(w, h, this.renderer.getPixelRatio());
+    this.camera.clearViewOffset();
     this.camera.updateProjectionMatrix();
+    this.camera.updateMatrixWorld();
+    // 세로 화면, 그리고 가로로 눕힌 휴대폰(높이 520 이하: style.css 의 휴대폰 가로 배치와 같은 기준)
+    this.fit.on = portrait || h <= 520;
+    this.fit.k = 0;
+    this.fit.measureIn = 0;
+  }
+
+  /**
+   * 세로 화면(휴대폰)에서는 위 상태줄 · 주문서와 아래 재료 패널 · 게이지가 화면을 많이 덮어
+   * 웍이 패널 뒤로 숨는다. 패널 사이의 빈 띠를 재서, 웍 앞 림이 띠 아래쪽에,
+   * 위쪽 관심 영역(연구: 들고 있는 기름통, 장사: 손님 얼굴)이 띠 위쪽에 오도록
+   * 카메라 위치·방향은 그대로 두고 확대(fov)와 화면 세로 이동(view offset)만 맞춘다.
+   */
+  /**
+   * 자동 품질: 게임 중 3초마다 평균 fps 를 재서 40 아래면 한 단계씩 낮춘다
+   * (높음 → 중간 → 낮음 → 낮음에서 해상도 80%씩, 최소 60%). 올리지는 않는다 (오르내림 반복 방지).
+   */
+  private checkBlack(raw: number) {
+    const b = this.black;
+    // 정상 화면이 20번(약 10초) 연속이면 그만 잰다 (픽셀 읽기는 GPU 를 잠깐 멈추게 한다). 품질이 바뀌면 다시 잰다
+    if (!this.active || raw > 0.5 || b.clean >= 20) return;
+    if (b.wait > 0) {
+      b.wait -= raw;
+      return;
+    }
+    b.wait = 0.5;
+    // 그린 직후 같은 작업 안에서 화면 버퍼를 읽는다 (가운데 5곳)
+    const gl = this.renderer.getContext();
+    const w = gl.drawingBufferWidth;
+    const h = gl.drawingBufferHeight;
+    this.renderer.setRenderTarget(null);
+    let black = true;
+    for (const [fx, fy] of [[0.5, 0.5], [0.35, 0.45], [0.65, 0.45], [0.4, 0.65], [0.6, 0.65]]) {
+      gl.readPixels(Math.floor(w * fx), Math.floor(h * fy), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, b.buf);
+      if (b.buf[0] + b.buf[1] + b.buf[2] > 0) {
+        black = false;
+        break;
+      }
+    }
+    if (!black) {
+      b.hits = 0;
+      b.clean++;
+      return;
+    }
+    b.clean = 0;
+    if (++b.hits < 3) return;
+    b.hits = 0;
+    b.wait = 2;
+    const next = SAFE_STEPS.find((s) => !this.safe.includes(s.id));
+    const info = (() => {
+      try {
+        const ext = gl.getExtension('WEBGL_debug_renderer_info');
+        return ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : String(gl.getParameter(gl.RENDERER));
+      } catch {
+        return '?';
+      }
+    })();
+    if (!next) {
+      console.warn('[웍웍] 검은 화면이 계속됩니다. 그래픽 품질을 낮음으로 바꿔 주세요.', { gpu: info, quality: this.qualityLevel });
+      return;
+    }
+    this.safe.push(next.id);
+    saveSafe(this.safe);
+    console.warn(`[웍웍] 검은 화면 감지 → ${next.label} 끔`, { gpu: info, quality: this.qualityLevel, off: [...this.safe] });
+    this.applyQuality();
+    this.resize();
+    this.toast('화면이 검게 나와서 그래픽 기능을 껐어요', `${next.label} 끔 · 이 브라우저에 기억`, '');
+  }
+
+  private watchPerf(raw: number) {
+    const p = this.perf;
+    if (this.qualityLevel !== 'auto' || !this.active || document.hidden || raw > 0.5) {
+      p.t = 0;
+      p.frames = 0;
+      return;
+    }
+    if (p.settle > 0) {
+      p.settle -= raw;
+      return;
+    }
+    p.t += raw;
+    p.frames++;
+    if (p.t < 3) return;
+    const fps = p.frames / p.t;
+    p.t = 0;
+    p.frames = 0;
+    if (fps >= 40) return;
+    const cur = resolveQuality('auto', this.autoCap).level;
+    const i = FIXED_LEVELS.indexOf(cur);
+    if (i > 0) this.autoCap = FIXED_LEVELS[i - 1];
+    else if (this.renderScale > 0.61) this.renderScale = Math.max(0.6, this.renderScale * 0.8);
+    else return;
+    p.settle = 2;
+    this.applyQuality();
+    this.resize();
+    const now = resolveQuality('auto', this.autoCap).level;
+    this.toast(`기기 성능에 맞춰 그래픽을 낮췄어요`, `자동 · ${QUALITY_LABEL[now]}${this.renderScale < 1 ? ` · 해상도 ${Math.round(this.renderScale * 100)}%` : ''}`, '');
+  }
+
+  private updateFraming(dt: number) {
+    const f = this.fit;
+    if (!f.on) return;
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    f.measureIn -= dt;
+    if (f.measureIn <= 0) {
+      f.measureIn = 0.3;
+      const rect = (id: string) => {
+        const el = document.getElementById(id);
+        if (!el || el.classList.contains('hidden')) return null;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 && getComputedStyle(el).display !== 'none' ? r : null;
+      };
+      let top = 0;
+      let bottom = H;
+      let left = 0;
+      let right = W;
+      if (W < H) {
+        // 세로: 위(상태줄 · 주문서 · 튜토리얼)와 아래(게이지 · 재료 · 안내) 사이
+        for (const id of ['top', 'ticket', 'guide']) {
+          const r = rect(id);
+          if (r && r.top < H * 0.5) top = Math.max(top, r.bottom);
+        }
+        for (const id of ['gauge', 'bottom', 'hint']) {
+          const r = rect(id);
+          if (r && r.bottom > H * 0.5 && (id !== 'hint' || r.height < 60)) bottom = Math.min(bottom, r.top);
+        }
+      } else {
+        // 가로 휴대폰: 위 상태줄 · 주문서 · 튜토리얼 띠, 오른쪽 재료 단, 아래 게이지 · 안내
+        for (const id of ['top', 'ticket', 'guide']) {
+          const r = rect(id);
+          if (r && r.top < H * 0.5) top = Math.max(top, r.bottom);
+        }
+        const tray = rect('bottom');
+        if (tray) right = tray.left;
+        for (const id of ['gauge', 'hint']) {
+          const r = rect(id);
+          if (r && r.bottom > H * 0.5 && (id !== 'hint' || r.height < 60)) bottom = Math.min(bottom, r.top);
+        }
+        left += 8;
+        right -= 8;
+      }
+      top += 10;
+      bottom -= 14;
+      // 띠가 너무 좁으면(튜토리얼 카드 등) 위쪽 가림은 일부 감수한다
+      const minBand = Math.min(220, H * 0.5);
+      if (bottom - top < minBand) top = Math.max(0, bottom - minBand);
+
+      // 카메라 공간 기울기 t = y/(-z), u = x/(-z): fov 와 무관
+      const cam = this.camera;
+      const view = cam.matrixWorldInverse;
+      const slope = (x: number, y: number, z: number) => {
+        const p = this.fitTmp.set(x, y, z).applyMatrix4(view);
+        return { t: p.y / -p.z, u: Math.abs(p.x) / -p.z };
+      };
+      const A = slope(0, 1.04, 0.0); // 웍 앞 림과 손잡이 시작 부분
+      const B = this.state === 'selling' ? slope(0, -0.25 + 1.78, -1.72) : slope(0, 1.42, -0.62);
+      const sides = [slope(0.56, 0.95, -0.09), slope(-0.3, 1.08, -0.38), slope(0.3, 1.08, -0.38)];
+      // 세로로 A~B 가 띠에 꼭 맞는 확대
+      let k = (bottom - top) / ((B.t - A.t) * (H / 2));
+      // 가로로 기름통 · 웍 림이 빈 곳 밖으로 나가지 않게 (화면 중심에서 u·k·H/2 px)
+      const halfW = (right - left) / 2;
+      for (const sd of sides) k = Math.min(k, (0.92 * halfW) / (Math.max(1e-3, sd.u) * (H / 2)));
+      // fov 45° ~ 100°
+      k = THREE.MathUtils.clamp(k, 1 / Math.tan(THREE.MathUtils.degToRad(50)), 1 / Math.tan(THREE.MathUtils.degToRad(22.5)));
+      // 띠 가운데에 A~B 의 가운데가 오게
+      const mid = (top + bottom) / 2;
+      const s = mid - (H / 2) * (1 - (k * (A.t + B.t)) / 2);
+      f.tk = k;
+      f.ts = s;
+      f.tx = (left + right) / 2 - W / 2;
+      if (f.k === 0) {
+        f.k = k;
+        f.s = s;
+        f.x = f.tx;
+      }
+    }
+    const a = 1 - Math.exp(-dt * 5);
+    f.k += (f.tk - f.k) * a;
+    f.s += (f.ts - f.s) * a;
+    f.x += (f.tx - f.x) * a;
+    const fov = THREE.MathUtils.radToDeg(2 * Math.atan(1 / f.k));
+    const v = this.camera.view;
+    if (Math.abs(fov - this.camera.fov) > 1e-3 || v?.offsetY !== -f.s || v?.offsetX !== -f.x) {
+      this.camera.fov = fov;
+      this.camera.setViewOffset(W, H, -f.x, -f.s, W, H);
+    }
   }
 
   // ───────────── 저장 / 로비 ─────────────
@@ -701,10 +1013,16 @@ class Game {
     const pool = RECIPES.filter((r) => this.found.has(r.id));
     if (!pool.length) return;
     const recipe = pool[Math.floor(Math.random() * pool.length)];
+    // 2일차부터 손님마다 요청사항이 붙을 수 있다 (재료 빼기 · 많이 · 적게 · 추가 · 불맛)
+    const unlockedIds = INGREDIENTS.filter((d) => this.isUnlocked(d.id)).map((d) => d.id);
+    const order = makeOrder(recipe, this.round, unlockedIds);
     const patience =
-      Math.max(T.patienceMin, T.patienceBase - this.round * T.patiencePerDay) + recipe.steps.length * T.patiencePerIng;
-    this.customer = new Customer(this.world.scene, recipe, patience);
+      Math.max(T.patienceMin, T.patienceBase - this.round * T.patiencePerDay) +
+      order.steps.length * T.patiencePerIng +
+      order.reqs.length * T.patiencePerReq;
+    this.customer = new Customer(this.world.scene, order, patience);
     toonify(this.customer.group);
+    enableShadows(this.customer.group);
     this.sfx.play('bell', 0.5);
   }
 
@@ -714,8 +1032,9 @@ class Game {
     return 1;
   }
 
-  private judge(recipe: Recipe, patienceFrac: number): Verdict {
+  private judge(order: Order, patienceFrac: number): Verdict {
     const s = this.stats;
+    const recipe = { ...order.recipe, steps: order.steps, price: order.price };
     const want = recipeIngs(recipe);
     const missingIds = want.filter((i) => !this.counts.has(i));
     const extra = [...this.counts.keys()].filter((i) => !want.includes(i)).length;
@@ -765,7 +1084,9 @@ class Game {
     const base = ingScore * amountScore * ratioScore * orderScore * cookScore * evenScore * burnScore * oilScore;
     // 웍질 보너스: 재료가 높이 떠오를수록 가산점 (기본 점수에 비례해서 붙는다)
     const toss = this.tossFrac();
-    const quality = Math.min(1, base * (1 + T.tossQuality * toss));
+    // 손님 요청사항을 지켰는지
+    const req = checkRequests(order, this.counts, toss);
+    const quality = Math.min(1, base * req.score * (1 + T.tossQuality * toss));
 
     const worstT = worst ? this.types[ING_INDEX[worst]] : null;
     const cookMsg = worst && worstT
@@ -784,7 +1105,10 @@ class Game {
     ];
     issues.sort((a, b) => a[0] - b[0]);
     let comment: string;
-    if (quality >= 0.9 && toss >= 1) comment = '완벽해요! 불맛 최고!';
+    // 못 지킨 요청이 있으면 그 얘기가 먼저 나온다
+    if (req.failed.length) comment = req.failed[0];
+    else if (req.allOk && quality >= 0.75) comment = quality >= 0.9 ? '말한 대로 딱이에요! 최고!' : '요청대로 해 주셨네요!';
+    else if (quality >= 0.9 && toss >= 1) comment = '완벽해요! 불맛 최고!';
     else if (quality >= 0.9) comment = '완벽해요!';
     else if (quality >= 0.75) comment = '맛있어요!';
     else comment = issues[0][1];
@@ -793,7 +1117,8 @@ class Game {
     const pay = quality < T.refundBelow ? 0 : Math.round((recipe.price * (0.4 + 0.6 * quality)) / 100) * 100;
     const tip = quality >= T.tipAbove ? Math.round((recipe.price * T.tipRate * patienceFrac) / 100) * 100 : 0;
     const tossPay = pay > 0 ? Math.round((recipe.price * T.tossPay * toss) / 100) * 100 : 0;
-    return { quality, stars, pay, tip, toss, tossPay, comment };
+    const reqTip = req.allOk && pay > 0 ? Math.round((recipe.price * T.requestTip) / 100) * 100 : 0;
+    return { quality, stars, pay, tip, toss, tossPay, comment, reqTip, reqOk: order.reqs.length ? req.allOk : null };
   }
 
   /** 적정 기름(모든 레시피 공통) 대비 지금 기름 비율 (1 = 적정) */
@@ -810,8 +1135,8 @@ class Game {
   serve() {
     const c = this.customer;
     if (this.state !== 'selling' || !c || c.state !== 'waiting' || this.stats.live < 8) return;
-    const v = this.judge(c.recipe, c.patienceFrac);
-    const earned = v.pay + v.tip + v.tossPay;
+    const v = this.judge(c.order, c.patienceFrac);
+    const earned = v.pay + v.tip + v.tossPay + v.reqTip;
     this.money += earned;
     this.dayMoney += earned;
     this.dayToss += v.tossPay;
@@ -835,7 +1160,7 @@ class Game {
 
     this.particles.clearLive();
     this.resetDish();
-    c.react(v.comment);
+    c.react(v.comment, v.reqOk === false ? 'shock' : v.pay === 0 || v.stars <= 2 ? 'sad' : v.stars >= 4 ? 'delight' : 'happy');
     this.leaving.push(c);
     this.customer = null;
     this.nextCustomerIn = T.customerGapMin + Math.random() * T.customerGapRand;
@@ -843,6 +1168,7 @@ class Game {
     const starStr = '★'.repeat(v.stars) + '☆'.repeat(5 - v.stars);
     if (v.pay > 0) {
       const extras = [];
+      if (v.reqTip) extras.push(`요청 반영 +${won(v.reqTip)}원`);
       if (v.tossPay) extras.push(`웍질 보너스 +${won(v.tossPay)}원`);
       if (v.tip) extras.push(`팁 +${won(v.tip)}원`);
       this.toast(`${starStr}  +${won(v.pay)}원`, extras.join(' · '), v.stars >= 4 ? 'good' : '', v.tossPay ? 'bonus' : v.tip ? 'tip' : undefined);
@@ -854,7 +1180,7 @@ class Game {
   }
 
   private customerGaveUp(c: Customer) {
-    c.react('너무 오래 걸리네요. 갈게요!');
+    c.react('너무 오래 걸리네요. 갈게요!', 'angry');
     this.leaving.push(c);
     this.customer = null;
     this.lost++;
@@ -966,14 +1292,25 @@ class Game {
     this.particles.step(h, this.wok, 1);
   }
 
+  private shownUnlocked = -1;
+
   private update(dt: number) {
     this.time += dt;
+    if (this.unlocked !== this.shownUnlocked) {
+      this.shownUnlocked = this.unlocked;
+      this.world.setUnlocked(this.unlocked);
+    }
+    this.updateFraming(dt);
     const scene = this.world.scene;
 
     if (this.state === 'selling') {
       this.timeLeft -= dt;
       const c = this.customer;
       if (c) {
+        // 손님은 웍을 따라보고, 재료가 높이 뜰수록 신난다
+        const lift = this.particles.airLift;
+        c.excite = this.stats.live > 0 && this.particles.airborne >= 3 ? clamp((lift - T.flameMinLift) / 0.18, 0, 1) : 0;
+        c.lookAt.copy(this.wok.base).add(this.wok.off).setY(1.0 + Math.min(0.4, lift));
         c.update(dt, scene);
         if (c.state === 'waiting' && c.patience <= 0) this.customerGaveUp(c);
       } else if (this.timeLeft > 0) {
@@ -1070,7 +1407,14 @@ class Game {
       this.flareCd = 0.07;
     }
     this.fire.update(dt);
-    this.world.fireLight.intensity = 0.4 + flare * 0.5 + hot * 1.2 + 0.08 * Math.sin(this.time * 30);
+    // 화구 불빛: 겹친 사인 + 잔떨림으로 불규칙하게 일렁이고, 셀수록 노랗게
+    const t = this.time;
+    const flick =
+      (0.07 * Math.sin(t * 31) + 0.05 * Math.sin(t * 17.3 + 1.1) + 0.04 * Math.sin(t * 53.7 + 2.3) + (Math.random() - 0.5) * 0.06) *
+      T.fireFlicker;
+    const fl = this.world.fireLight;
+    fl.intensity = Math.max(0, 0.4 + flare * 0.5 + hot * 1.2 + flick * (1 + hot));
+    fl.color.setRGB(1, 0.5 + 0.12 * hot + flick * 0.4, 0.18 + 0.05 * hot);
 
     // 카메라 흔들림
     this.shake = Math.max(0, this.shake - dt * 0.03);
@@ -1080,6 +1424,9 @@ class Game {
       this.camBase.z,
     );
     const heatLevel = clamp(s.avgCook, 0, 1);
+    // 달궈진 기름일수록 수면에 아지랑이 같은 잔물결이 인다
+    this.wok.oil.heat = 0.35 + heatLevel * 0.8 + flare * 0.4;
+    this.wok.oil.update();
     this.steam.update(dt, s.live ? 2 + heatLevel * 7 + s.burntFrac * 14 : 0, wc, clamp(s.burntFrac * 2.5, 0, 1));
 
     this.particleView.update(dt);
@@ -1202,16 +1549,26 @@ class Game {
     $('ticket').classList.toggle('hidden', !waiting);
     if (c && waiting) {
       $('ticket-no').textContent = `주문 No. ${String(this.served + this.lost + 1).padStart(2, '0')}`;
-      $('ticket-price').textContent = `${won(c.recipe.price)}원`;
-      $('ticket-name').textContent = c.recipe.name;
-      const rows = c.recipe.steps.map(([id, n], i) => {
+      const o = c.order;
+      $('ticket-price').textContent = `${won(o.price)}원`;
+      $('ticket-name').textContent = o.recipe.name;
+      // 요청사항 표시 (지킨 것은 초록, 어긴 것은 빨강)
+      this.setHtml(
+        'ticket-reqs',
+        o.reqs
+          .map((q) => `<span class="tk-req ${q.kind} ${reqState(o, q, this.counts)}">${q.ing ? tok(q.ing, 'xs') : ''}${reqLabel(q)}</span>`)
+          .join(''),
+      );
+      $('ticket-reqs').classList.toggle('hidden', !o.reqs.length);
+      const rows = o.steps.map(([id, n], i) => {
         const got = this.counts.get(id) ?? 0;
         const cls = got === 0 ? '' : got === n ? 'ok' : got > n ? 'wrong' : 'part';
         return `<div class="tk-step ${cls}"><span class="no">${i + 1}</span>${tok(id, 'sm')}<span class="nm">${ingDef(id).name}</span><span class="ct">${got} / ${n}</span></div>`;
       });
       for (const id of this.counts.keys()) {
-        if (c.recipe.steps.some(([x]) => x === id)) continue;
-        rows.push(`<div class="tk-step wrong"><span class="no">✕</span>${tok(id, 'sm')}<span class="nm">${ingDef(id).name}</span><span class="ct">주문에 없음</span></div>`);
+        if (o.steps.some(([x]) => x === id)) continue;
+        const removed = o.reqs.some((q) => q.kind === 'remove' && q.ing === id);
+        rows.push(`<div class="tk-step wrong"><span class="no">✕</span>${tok(id, 'sm')}<span class="nm">${ingDef(id).name}</span><span class="ct">${removed ? '빼 달랬어요!' : '주문에 없음'}</span></div>`);
       }
       this.setHtml('ticket-ings', rows.join(''));
       const f = c.patienceFrac;
@@ -1229,7 +1586,7 @@ class Game {
       b.setAttribute('aria-label', open ? `${ingDef(id).name} 넣기 (${n}/${MAX_PORTIONS})` : '잠긴 재료');
       (b.querySelector('.cnt') as HTMLElement).textContent = n ? `×${n}` : '';
       (b.querySelector('em') as HTMLElement).textContent = open ? ingDef(id).name : '잠김';
-      const want = waiting && c ? c.recipe.steps.find(([x]) => x === id) : undefined;
+      const want = waiting && c ? c.order.steps.find(([x]) => x === id) : undefined;
       b.classList.toggle('need', !!want && n < want[1]);
     }
     $<HTMLButtonElement>('serve').disabled = !waiting || s.live < 8;
@@ -1295,7 +1652,10 @@ class Game {
     $('toss-text').textContent = has ? `+${Math.round(toss * 100)}%` : '-';
 
     // 말풍선
-    const speaker = c && c.say ? c : this.leaving.find((l) => l.say);
+    let speaker = c && c.say ? c : this.leaving.find((l) => l.say);
+    // 휴대폰 배치에선 손님 머리가 주문서 뒤에 있어 말풍선이 요청 메모를 가린다.
+    // 주문 말은 도착 직후 잠깐만 보여 주고 주문서로 넘긴다 (반응 말풍선은 그대로)
+    if (speaker && speaker === c && this.fit.on && c.waited > 3) speaker = undefined;
     const bubble = $('bubble');
     if (speaker) {
       const p = this.tmp.copy(speaker.head).project(this.camera);
@@ -1311,18 +1671,27 @@ class Game {
   private last = performance.now();
   private frame() {
     const now = performance.now();
-    const dt = Math.min(0.05, (now - this.last) / 1000);
+    const raw = (now - this.last) / 1000;
+    this.watchPerf(raw);
+    // 느린 기기(10fps 까지)에서도 게임 시간이 실제 시간대로 흐르게: 한 프레임에 최대 0.1초.
+    // (예전엔 0.05초로 잘라 20fps 아래에선 게임 전체가 슬로모션이 되어 손님 인내심 등이 기기마다 달랐다)
+    const dt = Math.min(0.1, raw);
     this.last = now;
     this.acc += dt;
     let n = 0;
-    while (this.acc >= SUBSTEP && n < 16) {
+    while (this.acc >= SUBSTEP && n < MAX_SUBSTEPS) {
       this.stepPhysics(SUBSTEP);
       this.acc -= SUBSTEP;
       n++;
     }
-    if (n === 16) this.acc = 0;
+    if (n === MAX_SUBSTEPS) this.acc = 0;
     this.update(dt);
+    const key = this.world.keyLight;
+    key.castShadow = this.quality.shadows && T.shadows > 0;
+    this.world.tick(this.time);
+    key.intensity = this.world.keyBase * T.keyLight;
     this.post.render();
+    this.checkBlack(raw);
   }
 }
 

@@ -399,22 +399,22 @@ export class Particles {
 
 // ───────────────────────── 렌더링 ─────────────────────────
 
-function shapeGeometry(shape: Shape): THREE.BufferGeometry {
+export function shapeGeometry(shape: Shape): THREE.BufferGeometry {
   switch (shape) {
     case 'grain':
-      return new THREE.SphereGeometry(1, 7, 5).scale(1.45, 0.85, 0.9);
+      return new THREE.SphereGeometry(1, 10, 7).scale(1.45, 0.85, 0.9);
     case 'chunk':
       return new THREE.DodecahedronGeometry(1.1, 0).scale(1.25, 0.65, 1);
     case 'ring':
-      return new THREE.CylinderGeometry(0.85, 0.85, 0.8, 9);
+      return new THREE.CylinderGeometry(0.85, 0.85, 0.8, 14);
     case 'cube':
       return new THREE.BoxGeometry(1.4, 1.4, 1.4);
     case 'curl':
-      return new THREE.TorusGeometry(0.72, 0.36, 6, 10, Math.PI * 1.35);
+      return new THREE.TorusGeometry(0.72, 0.36, 8, 16, Math.PI * 1.35);
     case 'leaf':
       return new THREE.BoxGeometry(2, 0.45, 1.5);
     case 'petal':
-      return new THREE.TorusGeometry(0.9, 0.24, 5, 10, Math.PI * 0.9).scale(1, 1, 0.8);
+      return new THREE.TorusGeometry(0.9, 0.24, 6, 14, Math.PI * 0.9).scale(1, 1, 0.8);
     case 'strip':
       return new THREE.BoxGeometry(2.4, 0.35, 0.95);
     case 'slab':
@@ -449,6 +449,9 @@ export class ParticleRenderer {
       mesh.setColorAt(0, this.col.set(def.raw));
       mesh.count = 0;
       mesh.frustumCulled = false;
+      // 재료 조각도 웍 안에 그림자를 드리운다
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
       this.meshes.push(mesh);
       this.raw.push(new THREE.Color(def.raw));
       this.cooked.push(new THREE.Color(def.cooked));

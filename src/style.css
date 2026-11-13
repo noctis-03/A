@@ -77,6 +77,13 @@ button:focus-visible { outline: 3px solid var(--lantern); outline-offset: 2px; }
 .tk-paper { padding: 16px 18px 14px; background: var(--paper); color: var(--ink); border-radius: 4px 4px 14px 14px; box-shadow: 0 14px 30px rgba(0, 0, 0, .35); display: flex; flex-direction: column; gap: 12px; }
 .tk-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; font-weight: 700; color: #8a6a4c; letter-spacing: .1em; font-variant-numeric: tabular-nums; }
 .tk-name { font-family: var(--display); font-size: 30px; line-height: 1; text-wrap: balance; }
+/* 손님 요청사항: 주문서에 붙인 손글씨 메모 느낌의 띠 */
+.tk-reqs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -4px; }
+.tk-req { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px 3px 5px; border-radius: 8px; border: 1.5px dashed #c0461f; background: rgba(229, 72, 44, .08); color: #a8381a; font-size: 13px; font-weight: 700; white-space: nowrap; }
+.tk-req.fire { padding-left: 9px; }
+.tk-req.ok { border-style: solid; border-color: #2e9e6e; background: rgba(46, 158, 110, .1); color: #2e7a4e; }
+.tk-req.bad { border-style: solid; border-color: var(--chili); background: var(--chili); color: var(--cream); }
+.tok.xs { width: 15px; height: 15px; }
 .tk-steps { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-top: 2px dashed rgba(43, 33, 24, .2); border-bottom: 2px dashed rgba(43, 33, 24, .2); }
 .tk-step { display: flex; align-items: center; gap: 10px; font-size: 14px; }
 .tk-step .no { width: 20px; height: 20px; border-radius: 99px; display: grid; place-items: center; font-size: 11px; font-weight: 700; background: rgba(43, 33, 24, .15); color: var(--ink-2); flex: none; }
@@ -176,7 +183,7 @@ button:focus-visible { outline: 3px solid var(--lantern); outline-offset: 2px; }
 @keyframes tutBob { 0%, 100% { margin-top: 0; } 50% { margin-top: -10px; } }
 
 /* 말풍선 · 힌트 · 알림 · 웍질 팝업 */
-#bubble { position: absolute; transform: translate(-50%, -100%); padding: 10px 16px; border-radius: 16px; background: var(--paper); color: var(--ink); font-size: 16px; font-weight: 700; white-space: nowrap; box-shadow: 0 8px 20px rgba(0, 0, 0, .3); }
+#bubble { position: absolute; transform: translate(-50%, -100%); width: max-content; max-width: min(320px, 78vw); padding: 10px 16px; border-radius: 16px; background: var(--paper); color: var(--ink); font-size: 16px; font-weight: 700; line-height: 1.35; text-align: center; text-wrap: balance; box-shadow: 0 8px 20px rgba(0, 0, 0, .3); }
 #bubble::after { content: ''; position: absolute; left: 50%; bottom: -7px; margin-left: -7px; border: 7px solid transparent; border-top-color: var(--paper); border-bottom: 0; }
 #hint { position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%); padding: 8px 16px; border-radius: 99px; background: rgba(18, 22, 43, .78); border: 1px solid var(--line); font-size: 14px; white-space: nowrap; transition: opacity .4s; }
 #hint.off { opacity: 0; }
@@ -263,7 +270,11 @@ button:focus-visible { outline: 3px solid var(--lantern); outline-offset: 2px; }
 .lb-ings > span { font-size: 12px; color: var(--cream-dim); }
 #lb-ings { display: flex; gap: 6px; flex-wrap: wrap; }
 #lb-ings .tok { width: 30px; height: 30px; }
-.lb-mute { position: absolute; right: max(40px, env(safe-area-inset-right)); top: max(32px, env(safe-area-inset-top)); }
+.lb-top { position: absolute; right: max(40px, env(safe-area-inset-right)); top: max(32px, env(safe-area-inset-top)); display: flex; gap: 8px; }
+/* 그래픽 품질 버튼: 작은 라벨 + 현재 단계 */
+.icon-btn.q-btn { width: auto; min-width: 48px; white-space: nowrap; padding: 0 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; font-family: var(--body); line-height: 1.1; }
+.q-btn span { font-size: 10px; font-weight: 500; letter-spacing: .04em; color: var(--cream-dim); }
+.q-btn b { font-size: 13px; font-weight: 700; color: var(--lantern); }
 .lb-flow { position: absolute; right: max(40px, env(safe-area-inset-right)); bottom: max(32px, env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 99px; background: rgba(18, 22, 43, .78); border: 1px solid var(--line); font-size: 13px; font-weight: 600; }
 .lb-flow .on { color: var(--lantern); }
 .lb-flow .ic-s { width: 14px; height: 14px; stroke: rgba(255, 244, 220, .6); }
@@ -368,7 +379,8 @@ button:focus-visible { outline: 3px solid var(--lantern); outline-offset: 2px; }
 @media (max-width: 1100px) {
   #guide { left: auto; right: max(272px, calc(env(safe-area-inset-right) + 248px)); transform: none; width: min(420px, calc(100% - 300px)); min-width: 0; }
 }
-@media (max-width: 760px), (orientation: portrait) and (max-width: 900px) {
+/* 휴대폰: 세로 화면, 좁은 화면, 그리고 가로로 눕힌 휴대폰(높이 520px 이하)까지 같은 축소 스타일을 쓴다 */
+@media (max-width: 760px), (orientation: portrait) and (max-width: 900px), (orientation: landscape) and (max-height: 520px) {
   #top { left: 12px; right: 12px; top: max(12px, env(safe-area-inset-top)); gap: 8px; }
   #status { flex: 1; min-width: 0; gap: 10px; padding: 6px 12px 6px 6px; }
   .st-badge { width: 32px; height: 32px; border-radius: 10px; }
@@ -382,6 +394,8 @@ button:focus-visible { outline: 3px solid var(--lantern); outline-offset: 2px; }
   #book-btn .bb-text { display: none; }
   .icon-btn { width: 44px; height: 44px; }
   #home-btn { display: none; }
+  /* 좁은 화면에서는 상단 줄이 넘치므로 품질 버튼은 로비에만 둔다 */
+  #quality { display: none; }
   #ticket { left: 12px; right: 12px; top: 64px; width: auto; }
   .tk-clip { display: none; }
   .tk-paper { padding: 12px 14px; gap: 8px; border-radius: 16px; }
@@ -436,7 +450,7 @@ button:focus-visible { outline: 3px solid var(--lantern); outline-offset: 2px; }
   .lb-brand h1 { font-size: 84px; }
   .lb-brand p { font-size: 15px; }
   .lb-flow { display: none; }
-  .lb-mute { right: 16px; top: max(16px, env(safe-area-inset-top)); }
+  .lb-top { right: 16px; top: max(16px, env(safe-area-inset-top)); }
   .book { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); height: calc(100vh - 32px); }
   .bk-cover { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 18px; border-right: 0; border-bottom: 6px solid #6b2213; }
   .bk-title h2 { font-size: 26px; }
@@ -453,6 +467,65 @@ button:focus-visible { outline: 3px solid var(--lantern); outline-offset: 2px; }
   #end-unlock .tok { width: 56px; height: 56px; }
   #end-unlock b { font-size: 28px; }
 }
+/*
+ * 휴대폰 가로: 세로용 배치(재료 패널이 아래를 꽉 채움)를 그대로 쓰면 화면 전체가 패널로 덮인다.
+ * 재료 · 버튼은 오른쪽 세로 단, 게이지는 왼쪽 아래 한 줄, 주문서 · 튜토리얼은 왼쪽 위에 두고
+ * 남는 가운데를 3D 화면(웍)에 준다. 카메라는 main.ts 의 updateFraming 이 이 빈 곳에 맞춘다.
+ */
+@media (orientation: landscape) and (max-height: 520px) {
+  #top { left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); top: max(8px, env(safe-area-inset-top)); }
+  #status { flex: 0 1 auto; padding: 4px 12px 4px 4px; }
+  .st-badge { width: 30px; height: 30px; }
+  #book-btn, .icon-btn { height: 40px; }
+  .icon-btn { width: 40px; }
+  #quality { display: flex; }
+  #home-btn { display: grid; }
+  /* 주문서 · 튜토리얼은 상태줄 아래, 재료 단 왼쪽까지 가로로 얇은 띠 */
+  #ticket { left: max(12px, env(safe-area-inset-left)); right: calc(max(12px, env(safe-area-inset-right)) + 300px); top: 56px; width: auto; }
+  .tk-paper { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; padding: 6px 10px; gap: 4px 10px; }
+  .tk-name { font-size: 16px; white-space: nowrap; }
+  .tk-steps { flex-wrap: wrap; gap: 4px; }
+  .tk-step { flex: none; white-space: nowrap; font-size: 12px; padding: 2px 6px 2px 2px; }
+  .tk-pat, .tk-reqs { grid-column: 1 / -1; }
+  .tk-reqs { margin-top: 0; }
+  .tk-req { font-size: 11px; padding: 2px 7px 2px 4px; }
+  .tk-bar { height: 4px; }
+  #guide { left: max(12px, env(safe-area-inset-left)); right: calc(max(12px, env(safe-area-inset-right)) + 300px); top: 56px; width: auto; min-width: 0; padding: 6px 10px; gap: 4px; }
+  .guide-head, .guide-dots { display: none; }
+  .guide-step b { font-size: 14px; }
+  .guide-step p { font-size: 12px; }
+  #guide-icon { width: 34px; height: 34px; }
+  #guide-icon svg { width: 26px; height: 26px; }
+  #bottom { left: auto; right: max(12px, env(safe-area-inset-right)); top: 58px; bottom: max(8px, env(safe-area-inset-bottom)); width: 288px; justify-content: flex-end; gap: 6px; }
+  #ings { gap: 5px; }
+  #ings button { height: 48px; gap: 2px; border-radius: 10px; }
+  #ings button .tok { width: 22px; height: 22px; }
+  #ings button em { font-size: 11px; }
+  #ings button .cnt { top: -6px; right: -4px; padding: 1px 5px; font-size: 11px; }
+  #actions { grid-template-columns: 48px minmax(0, 1fr) minmax(0, 1.2fr); gap: 6px; }
+  #hud[data-mode="selling"] #actions { grid-template-columns: 48px minmax(0, 1fr); }
+  #taste-btn, #trash, #hud[data-mode="selling"] #trash, #go-sell, #serve { height: 48px; }
+  #taste-btn { font-size: 17px; }
+  #go-sell { font-size: 12px; }
+  #serve span { font-size: 20px; }
+  #gauge, #hud[data-mode="research"] #gauge { left: max(12px, env(safe-area-inset-left)); right: calc(max(12px, env(safe-area-inset-right)) + 300px); bottom: max(8px, env(safe-area-inset-bottom)); padding: 6px 8px; }
+  #hint { left: calc((100% - 300px) / 2); bottom: 62px; max-width: calc(100% - 340px); overflow: hidden; text-overflow: ellipsis; }
+  #toasts { left: calc((100% - 300px) / 2); width: calc(100% - 340px); }
+  #hud::before { height: 90px; background: linear-gradient(0deg, rgba(12, 14, 30, .85), rgba(12, 14, 30, 0)); }
+  /* 로비: 낮은 화면에 맞춰 줄이고, 넘치면 안에서 스크롤 */
+  .lb-col { left: max(24px, env(safe-area-inset-left)); right: auto; width: min(420px, 60%); top: max(14px, env(safe-area-inset-top)); bottom: max(14px, env(safe-area-inset-bottom)); gap: 10px; overflow-y: auto; }
+  .lb-brand { gap: 4px; }
+  .lb-brand h1 { font-size: 52px; }
+  .lb-brand p { margin: 0; font-size: 13px; line-height: 1.4; }
+  .lb-btns { gap: 8px; }
+  .lb-main { padding: 10px 16px; }
+  .lb-main-text b { font-size: 22px; }
+  .lb-ghost { padding: 9px 14px; font-size: 14px; }
+  .lb-save { margin-top: 0; padding: 10px 14px; gap: 8px; }
+  .lb-ings { display: none; }
+  .lb-shade { background: linear-gradient(90deg, rgba(12, 14, 30, .94) 0%, rgba(12, 14, 30, .8) 50%, rgba(12, 14, 30, .25) 85%); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   #flash.on, .tut-pulse, #tut-arrow, .toast, .tosspop { animation: none; }
   .tut-pulse { box-shadow: 0 0 0 3px var(--lantern); }

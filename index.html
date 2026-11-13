@@ -62,6 +62,7 @@
         </button>
         <div class="top-btns">
           <button type="button" class="icon-btn" id="home-btn" aria-label="로비로"><svg class="ic"><use href="#i-home" /></svg></button>
+          <button type="button" class="icon-btn q-btn" id="quality" aria-label="그래픽 품질 바꾸기"><span>그래픽</span><b>자동</b></button>
           <button type="button" class="icon-btn" id="mute" aria-label="소리 켜기/끄기"><svg class="ic"><use href="#i-sound" /></svg></button>
         </div>
       </div>
@@ -71,6 +72,7 @@
         <div class="tk-paper">
           <div class="tk-head"><span id="ticket-no">주문</span><span id="ticket-price"></span></div>
           <div class="tk-name" id="ticket-name"></div>
+          <div class="tk-reqs hidden" id="ticket-reqs"></div>
           <div class="tk-steps" id="ticket-ings"></div>
           <div class="tk-pat">
             <div class="tk-pat-label"><span>손님 인내심</span><span id="patience-label"></span></div>
@@ -150,7 +152,10 @@
           <div class="lb-ings"><span id="lb-ing-label"></span><div id="lb-ings"></div></div>
         </div>
       </div>
-      <button type="button" class="icon-btn lb-mute" id="lobby-mute" aria-label="소리 켜기/끄기"><svg class="ic"><use href="#i-sound" /></svg></button>
+      <div class="lb-top">
+        <button type="button" class="icon-btn q-btn" id="lobby-quality" aria-label="그래픽 품질 바꾸기"><span>그래픽</span><b>자동</b></button>
+        <button type="button" class="icon-btn" id="lobby-mute" aria-label="소리 켜기/끄기"><svg class="ic"><use href="#i-sound" /></svg></button>
+      </div>
       <div class="lb-flow">
         <span class="on">레시피 연구</span><svg class="ic-s"><use href="#i-arrow" /></svg><span>장사</span><svg class="ic-s"><use href="#i-arrow" /></svg><span>결과 · 새 재료</span>
       </div>
