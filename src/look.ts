@@ -349,6 +349,20 @@ const GradeShader = {
     }`,
 };
 
+/** NaN · 무한대 · 비정상적으로 큰 값을 지운다 (하프 플로트 최대값 근처로 제한) */
+const SanitizeShader = {
+  uniforms: { tDiffuse: { value: null as THREE.Texture | null } },
+  vertexShader: `varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 ); }`,
+  fragmentShader: `uniform sampler2D tDiffuse;
+    varying vec2 vUv;
+    void main() {
+      vec4 c = texture2D( tDiffuse, vUv );
+      if ( any( isnan( c ) ) || any( isinf( c ) ) ) c = vec4( 0.0, 0.0, 0.0, 1.0 );
+      gl_FragColor = clamp( c, 0.0, 60000.0 );
+    }`,
+};
+
 // ───────────────────────── 블룸 ─────────────────────────
 
 export class Post {
@@ -356,6 +370,7 @@ export class Post {
   readonly bloom: UnrealBloomPass;
   readonly ao: SceneAOPass;
   readonly grade: ShaderPass;
+  readonly sanitize: ShaderPass;
   readonly smaa: SMAAPass;
   private size = new THREE.Vector2();
   private aoKey = '';
@@ -368,6 +383,9 @@ export class Post {
     const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
     this.composer = new EffectComposer(renderer, rt);
     this.composer.addPass(new RenderPass(scene, camera));
+    // 장면 어디서든 NaN · 무한대 픽셀이 생기면 AO · 블룸이 화면 전체로 번져 새까매진다 → 바로 0 으로 바꾼다
+    this.sanitize = new ShaderPass(SanitizeShader);
+    this.composer.addPass(this.sanitize);
     this.ao = new SceneAOPass(scene, camera, 1, 1);
     this.ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 8 });
     this.composer.addPass(this.ao);

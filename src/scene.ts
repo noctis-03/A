@@ -269,8 +269,11 @@ function lightShaft(top: number, bottom: number, height: number, color: THREE.Co
       }`,
     fragmentShader: `uniform vec3 color; uniform float strength; varying float vV; varying vec3 vN; varying vec3 vView;
       void main() {
-        float edge = abs(dot(normalize(vN), normalize(vView)));
-        float a = pow(edge, 3.0) * pow(vV, 2.2) * 0.035 * strength;
+        // MSAA 에서는 삼각형 가장자리 픽셀의 varying 이 범위 밖으로 외삽될 수 있다.
+        // pow(음수) 는 GPU 에서 NaN 이 되고, 가산 혼합 + 블룸으로 화면 전체가 검게 번지므로 꼭 0~1 로 묶는다
+        float edge = clamp(abs(dot(normalize(vN), normalize(vView))), 0.0, 1.0);
+        float v = clamp(vV, 0.0, 1.0);
+        float a = max(0.0, pow(edge, 3.0) * pow(v, 2.2) * 0.035 * strength);
         gl_FragColor = vec4(color * a, 1.0);
       }`,
     transparent: true,

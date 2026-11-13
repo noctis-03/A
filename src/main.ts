@@ -44,7 +44,8 @@ const SAFE_STEPS: { id: SafeId; label: string }[] = [
   { id: 'ao', label: '구석 어둡게(AO)' },
   { id: 'bloom', label: '빛 번짐(블룸)' },
 ];
-const SAFE_KEY = 'woktruck.gfxsafe';
+// v2: 집 주방 검은 화면(빛기둥 NaN)을 고치기 전에 자동으로 꺼진 기능은 잊는다
+const SAFE_KEY = 'woktruck.gfxsafe.v2';
 function loadSafe(): SafeId[] {
   try {
     const v = JSON.parse(localStorage.getItem(SAFE_KEY) ?? '[]');
